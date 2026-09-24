@@ -1,0 +1,3767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>祖玛 · RNA</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #05070c; overflow: hidden; }
+  body { touch-action: none; -webkit-tap-highlight-color: transparent; }
+  #stage { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+// ===== src/config.js =====
+// 设计常量：全部长度都是"设计单位"，运行时乘 scale 得到像素。
+// 依据 DESIGN.md §2.3。任何数值调整只改这一个文件。
+
+const BASES = ['A', 'U', 'G', 'C', 'T'];
+
+// 互补配对表（不对称：A 是唯一的双配碱基）。唯一真源，U8 直接使用。
+const COMPLEMENT = {
+  A: ['U', 'T'],
+  U: ['A'],
+  T: ['A'],
+  G: ['C'],
+  C: ['G'],
+};
+
+// 颜色（第二通道）。★ 设计原则：**互补碱基的颜色必须互为反色**。
+//   这样玩家不需要背配对表：发跟它颜色相反的那颗就是配对，纯知觉操作。
+//   GC 一族：G 青蓝(201度) <-> C 橙(17度)    ATU 一族：A 紫红(288度) <-> T 绿(107度) / U 亮绿(104度)
+//   T 与 U 同色相、不同明度：既能分辨，又都近似 A 的反色（两者都是 A 的配对对象）。
+const BASE_COLOR = {
+  A: '#e05cff',   // 288度 紫红 —— 反色是绿色系
+  T: '#5cc93f',   // 107度 绿
+  U: '#9dff7a',   // 104度 亮绿（与 T 同族，明度更高）
+  G: '#33b8ff',   // 201度 青蓝 —— 反色是橙色
+  C: '#ff6b33'    //  17度 橙
+};
+const BASE_INK = {
+  A: '#1c0a24',
+  T: '#0d2205',
+  U: '#132a08',
+  G: '#04203a',
+  C: '#2b0f04'
+};
+
+// 错误配对（mark = 2）的配色：低饱和灰 + 警示红 —— 不抢眼，但一眼能看出"坏了"
+const WRONG_COLOR = '#6b7280';
+const WRONG_INK = '#0b1220';
+const WRONG_GLOW = '#ff5555';
+
+// 某碱基的配对对象应显示的颜色（用于给大球描一圈「该发什么色」的提示）
+function complementColor(base) {
+  const c = COMPLEMENT[base];
+  return c && c.length ? BASE_COLOR[c[0]] : '#ffffff';
+}
+
+const DESIGN = {
+  base: 900,                          // 短边设计基准
+  spawnRadius: 19,                    // 出球道大球半径 R
+  smallDiameterRatio: 1 / Math.SQRT2, // 三消道直径 / 出球道直径 = 1/√2 -> 直径比 √2:1、面积比 2:1
+  railClearance: 9.0,                 // 两轨之间的净空。原来 3.2，球边缘只剩 2px 缝，配对连线没地方画                 // 两轨之间的净空
+  beadGap: 1.5,                       // 同轨相邻球净空（= 绳模型的 linkGap）
+  pathSamples: 2400,
+  outerFit: 0.45,
+  outerFitWide: 0.62,   // 横向拉伸上限
+  outerFitTall: 0.86,   // 竖屏时纵向拉伸上限（用满手机高度）
+  minScale: 0.82,       // scale 下限（自适应，见 viewFor）：手机竖屏上球要够大、能瞄
+  innerRatio: 0.32,
+  turns: 1.9,
+
+  // 珠串推进（U3）：手感沿用原版——加速慢、减速快（约 20:1）
+  chainSpeed: 42,     // 目标速度（设计单位/秒）
+  chainAccel: 30,     // 加速（设计单位/秒²）
+  chainDecel: 620,    // 减速（设计单位/秒²）
+  slowDistance: 0,    // B7 冻结：减速带关掉（置 0 即禁用；原版是 340）
+  slowFactor: 2.6,    // 减速带末端的速度分母
+
+  // U6/U7/U8 发射与配对
+  ribosomeRadius: 30,     // 核糖体半径（设计单位）
+  fireCooldown: 0.16,     // 两发之间的最小间隔（秒）
+  shotSpeed: 1150,        // 弹丸速度（设计单位/秒）
+  shotRadiusRatio: 0.9,   // 弹丸半径 = 三消道小球半径 × 该系数
+  shotMaxLife: 3.0,       // 弹丸存活上限（秒）
+  dockTime: 0.30,         // 配对吸附飞行时长（秒）
+  readWindow: 0.30,       // U9 识别窗口（A14 的加码容错），纯手感参数
+
+  // U11 生命与计分（A15：失败条件与祖玛一致）
+  startLives: 3,
+  // ★ 过关条件（DESIGN.md §50）：照原版 Board.cpp:620-644 —— 原版是**分数达标**过关，
+  //   不是"清空场上球"（清空只是暂时，链子会从出球口继续补）。
+  //   达到目标后：停冒球 + 台上剩下的球引爆（原版 DetonateBalls）。
+  // ★★ 每关的球数预算。**0 = 无限出球**（对应原版 CurveDesc::mNumBalls == 0，
+  //   原版把它叫 endless）。要有限关卡就写正数。
+  //
+  //   历史：我一度把它当"让清零过关可达"的手段 -> 那是**治标**。
+  //   真正的病是"手里那颗珠子过期了没人换"（见下方 scoreTarget 附近的说明），
+  //   修好之后无限出球本来就撑得住（清球 1.23 颗/秒 > 冒球 1.06 颗/秒），预算可以撤。
+  ballBudget: 0,
+  // 分数目标。>0 时达标过关（原版 Board::mScoreTarget 的同构，endless 也是靠它升级）。
+  //   500 分 ≈ 清 50 颗 ≈ 41 秒（按 1.23 颗/秒），是个合适的关卡长度。
+  scoreTarget: 500,
+  // 另一个过关条件：**场上清空**。正常玩法里链子会立刻从出球口补上，所以「空」只可能
+  // 来自「你把整场清光了」（比如只剩 3 颗 mark=2，一次爆炸全带走）。模糊测试会关掉它。
+  winOnClear: true,          // 原版 Board::mLives = 3
+  scorePerBall: 10,       // 最小计分：每消除一颗
+  losingSpeed: 1500,      // 失败时珠子被吸入洞穴的速度（设计单位/秒）
+
+  // U12 加球（只发生在出球道）
+  mergeTime: 0.26,        // 并入动画时长（秒）
+  // ⏸ 加球默认关闭。原因见 DESIGN.md §17：它当前**没有给玩家任何增益**（链 +1、不产生新配对），
+  // 是纯惩罚，且与用户最初「配对错误不会直接带来负反馈」相冲突。
+  // 机制本身（并入动画 + 自动顶开）已完整实现并有 15 项单测，改回 true 即恢复。
+  // ★ 切换轨道机制（DESIGN.md §46）：一发子弹要么去匹配（三消道留标记），要么去加球（并入出球道）。
+  //   原版是"一发两用"（子弹必然并入，然后 CheckSet 自动判同色三消，见 CurveMgr.cpp:1860）——
+  //   它的并入是中性的（球变长而已，消除会清掉）。我们的并入会**改变 0/1/2 序列的结构**，
+  //   而且要解"卡死的连续区段"（§28 的 1-间隔死球），需要玩家主动选时机，所以分模式。
+  defaultMode: 'match',   // 'match'（RNA 碱基配对）| 'insert'（加球）| 'seven'（七球·元素）
+
+  // ---- §57 元素反应模式 ----
+  // 反应表本身在 elements.js（那是考证结论）；这里只放**本作的**数值旋钮。
+  elemFreezeTime: 3.0,      // 冻结：整链停止前进的秒数（原神里冻结 = 无法行动）
+  elemAutoPairCount: 3,     // 超导：自动「读出」（配对）的颗数上限
+  elemSwirlRange: 2,        // 扩散：把元素往两侧传播几颗
+  elemBurnTime: 3.0,        // 燃烧持续时间（秒）
+  elemBurnTick: 0.25,       // 燃烧频率：原神 0.25 秒跳一次，即每秒 4 次
+  elemCoreLife: 6.0,        // 草原核存活时长（原神 6 秒）
+  elemCoreMax: 5,           // 场上最多几个草原核（原神上限 5 个，超出的立即爆炸）
+  elemReactionDepth: 4,     // 反应连锁深度上限（扩散/传导可能引发二次反应）
+  elemShieldMax: 3,         // 晶片护盾上限（每片抵挡一次洞穴吞噬）
+  // 每次反应的基础分：对应原神「剧变反应是一次独立显示的伤害」。
+  // ⚠ 一开始给 20，实测元素模式下**分数过关的无尽关 7.7 秒就通关了**（匹配模式 30 秒）——
+  //   因为反应分盖过了"消一颗 10 分"这条主线（14 次反应 280 分 vs 消 24 颗 240 分）。
+  //   降到 10：反应是加成，不该成为主要得分手段。
+  elemScorePerReaction: 10,
+  reactionFlashTime: 1.2,   // 反应名在屏幕上停留的秒数（纯渲染）
+  // ★ 瞄准提示（§57.11 的对策①）：发球前，在"这一发真能打中的球"上标出会触发什么反应。
+  //   元素层不像碱基那样有直觉通道（"发反色的那颗"就完事了），玩家得背反应表 ——
+  //   这个提示是成本最低的解法：不改任何规则，只把已经算出来的结果说出来。
+  elemHints: true,
+  hintMaxCount: 4,          // 同屏最多标几个（多了反而糊）
+  modeFlashTime: 0.28,    // 按模式按钮后按钮高亮的时长（秒）—— 给「点到了」一个确认
+
+
+  // 珠子袋：从「场上未配对大球的互补碱基」里抽（原版 GetRandomPendingBallColor 的同族机制）。
+  // 1.0 = 永远抽可用的；0 = 纯均匀。纯均匀时随机一发配上的概率只有 6/25 = 24%，是手忙脚乱的主因。
+  bagBias: 1.0,
+
+  // 视觉过渡（纯渲染，不参与任何判定）：消除后前段往出球口方向后退、插入时前段被顶开，
+  // 这两处逻辑上是当帧到位的（所以 λ≡1、级联不被阻断），但画面上要缓动一下才好看。
+  retreatTime: 0.22,
+
+  // 原版式后退冲量（CurveMgr::AdvanceBackwardBalls / Ball::mBackwardsCount）：
+  // 消除后整链沿轨道往冒球口方向渐进后退，而不是瞬移。原版是 BackwardsCount=30、速度=combo*1.5。
+  backFrames: 30,
+  backStopFrames: 20,   // 后退期间暂停推进/喂入的帧数（对应原版 AdvanceBackwardBalls 末尾的 mStopTime = 20）
+
+
+  // 加球的正反馈：插入后若与邻居互补，这颗新球自己获得绑定小球（进入 run）。
+  // 账：链 +1，若因此凑满 3n -> 消掉 -> 净 -2。详见 DESIGN.md §18。
+  // ★ 默认 false：让两种模式语义彻底分离 —— 加球模式只改链结构、完全不碰标记，
+  //   玩家不用猜「加球时会不会顺手配上一颗」。想要 §18 那个正反馈就改回 true。
+  insertPairs: false
+};
+
+// 模式按钮的屏幕矩形（render 画、main 判点击，共用一份）
+function modeButtonRect(view, mt) {
+  const r = 40 * mt.scale;          // 手指友好
+  const pad = 26 * mt.scale;        // 离底边留远一点，免得被手机浏览器自己的 UI 盖住
+  return { x: view.w - r - pad, y: view.h - r - pad, r: r };
+}
+
+// ★ §61 开始菜单的布局（render 画、main.js 判点击，共用一份 —— 和 modeButtonRect 一个套路）。
+//   返回的 buttons 里带着**原始 item**，所以点中之后不需要再按下标去猜是哪个关卡。
+//
+//   竖屏（窄）2 列、横屏/桌面 4 列：手机上一行塞 4 个按钮会小到点不准。
+function menuLayout(view, mt, items) {
+  const s = mt.scale || 1;
+  const W = view.w, H = view.h;
+  const narrow = W < 640;
+  const cols = narrow ? 2 : 4;
+  const pad = Math.max(10, 18 * s);
+  const gapX = 9 * s, gapY = 8 * s;
+  const innerW = Math.min(W - pad * 2, narrow ? 440 * s : 760 * s);
+  const x0 = (W - innerW) / 2;
+  const bh = Math.max(36, 50 * s);
+  const bw = (innerW - gapX * (cols - 1)) / cols;
+  const buttons = [];
+  const groups = [];
+  let y = Math.max(76 * s, H * 0.26);
+  let col = 0, last = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.group !== last) {
+      if (last !== null) y += bh + gapY + 24 * s;   // 换组：留出组标题的位置
+      groups.push({ name: it.group, y: y });
+      y += 20 * s;
+      col = 0;
+      last = it.group;
+    }
+    buttons.push({ x: x0 + col * (bw + gapX), y: y, w: bw, h: bh, item: it, index: i });
+    col += 1;
+    if (col >= cols) { col = 0; y += bh + gapY; }
+  }
+  return {
+    x0: x0, innerW: innerW, cols: cols, bw: bw, bh: bh,
+    buttons: buttons, groups: groups,
+    titleY: Math.max(40 * s, H * 0.14),
+    footerY: H - Math.max(22 * s, 30 * s)
+  };
+}
+
+// 局内的「回菜单」按钮（左下角，和右下角的模式按钮对称）
+function menuButtonRect(view, mt) {
+  const r = 22 * mt.scale;
+  const pad = 26 * mt.scale;
+  return { x: r + pad, y: view.h - r - pad, r: r };
+}
+
+// 固定层级带（DESIGN.md §3.2）
+const Z = {
+  projectile: 50,
+  actor: 60,
+  fx: 70,
+  hud: 100
+};
+
+function metrics(scale) {
+  const R = DESIGN.spawnRadius * scale;
+  const r = R * DESIGN.smallDiameterRatio;
+  const d = R + r + DESIGN.railClearance * scale;
+  const linkGap = DESIGN.beadGap * scale;
+  const p = 2 * R + linkGap;
+  return {
+    scale: scale,
+    R: R,                        // 出球道球半径
+    r: r,                        // 三消道球半径
+    d: d,                        // 两轨中心距
+    p: p,                        // 同轨相邻球心距（= touchDist(大,大)）
+    linkGap: linkGap,            // 绳模型相邻球的额外净空
+    diameterRatio: R / r,        // === √2
+    areaRatio: (R * R) / (r * r) // === 2
+  };
+}
+
+// 视口布局。两个要点：
+//   1) scale 有**下限**：手机竖屏 (400x850) 上 min/900 只有 0.44，球直径 17px，手指根本瞄不准。
+//   2) 竖屏时纵向放开上限：圆形棋盘在 400x850 上只占中间一小块，上下全是空的。
+function viewFor(w, h) {
+  const base = Math.min(w, h);
+  // scale 下限不能是绝对常量：小屏（320）上再大就把棋盘挤爆了。
+  // 所以取 min(0.82, base/450)：400 宽 -> 0.82；320 宽 -> 0.71；900 宽 -> 仍是 min/900 = 1.0
+  const scale = Math.max(base / DESIGN.base, Math.min(DESIGN.minScale, base / 450));
+  const portrait = h > w * 1.25;
+  const capX = base * (portrait ? DESIGN.outerFitWide : DESIGN.outerFitWide);
+  const capY = base * (portrait ? DESIGN.outerFitTall : DESIGN.outerFitWide);
+  return {
+    w: w,
+    h: h,
+    dpr: 1,
+    cx: w / 2,
+    cy: h / 2,
+    rx: Math.min(w * DESIGN.outerFit, capX),
+    ry: Math.min(h * DESIGN.outerFit, capY),
+    base: base,
+    scale: scale,
+    portrait: portrait
+  };
+}
+
+
+// 真实碱基配对：A-U / A-T / G≡C。参数顺序无所谓（表是对称的，单测会断言）。
+function isComplement(tRNA, mRNA) {
+  const c = COMPLEMENT[mRNA];
+  return !!c && c.indexOf(tRNA) >= 0;
+}
+
+// ===== src/geometry.js =====
+// 轨道几何内核：弧长参数化骨架 + 法线偏移双轨 + 层级分段 + 轨道校验器。
+// 纯计算，不依赖 DOM，可被 node 直接 import 做单元测试（tools/test-geometry.mjs）。
+
+const TAU = Math.PI * 2;
+
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+class TrackPath {
+  constructor(pts, length) {
+    this.pts = pts;
+    this.length = length;
+  }
+  get samples() { return this.pts.length; }
+
+  // u ∈ [0,1] -> 弧长
+  sAtU(u) {
+    const i = Math.round(clamp(u, 0, 1) * (this.pts.length - 1));
+    return this.pts[i].s;
+  }
+
+  // 弧长 -> 采样区间左端点下标
+  indexAt(s) {
+    const pts = this.pts;
+    if (s <= 0) return 0;
+    if (s >= this.length) return pts.length - 2;
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].s <= s) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
+  pointAt(s) {
+    const pts = this.pts;
+    const sc = clamp(s, 0, this.length);
+    const i = this.indexAt(sc);
+    const a = pts[i], b = pts[i + 1];
+    const seg = b.s - a.s;
+    const t = seg > 1e-9 ? (sc - a.s) / seg : 0;
+    return {
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+      s: sc,
+      z: t < 0.5 ? a.z : b.z
+    };
+  }
+
+  // 法线（单位向量，沿弧长连续，起点背离 center）
+  normalAt(s) {
+    const pts = this.pts;
+    const sc = clamp(s, 0, this.length);
+    const i = this.indexAt(sc);
+    const a = pts[i], b = pts[i + 1];
+    const seg = b.s - a.s;
+    const t = seg > 1e-9 ? (sc - a.s) / seg : 0;
+    let nx = a.nx + (b.nx - a.nx) * t;
+    let ny = a.ny + (b.ny - a.ny) * t;
+    const L = Math.hypot(nx, ny) || 1;
+    return { x: nx / L, y: ny / L };
+  }
+
+  zAt(s) {
+    const i = this.indexAt(clamp(s, 0, this.length));
+    return this.pts[i].z;
+  }
+}
+
+// 采样骨架曲线并建立弧长表。spineFn(u) -> {x,y}，坐标已是像素。
+function buildPath(spineFn, opts) {
+  opts = opts || {};
+  const n = Math.max(64, opts.samples || 2400);
+  const pts = new Array(n + 1);
+  let s = 0;
+  let px = 0, py = 0;
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const q = spineFn(u);
+    if (i > 0) s += Math.hypot(q.x - px, q.y - py);
+    px = q.x; py = q.y;
+    pts[i] = { u: u, x: q.x, y: q.y, s: s, nx: 0, ny: 0, z: 0 };
+  }
+  const path = new TrackPath(pts, s);
+  computeNormals(path, opts.center);
+  return path;
+}
+
+// 法线沿弧长连续：起点用"背离中心"定向，其后用点积连续性翻正。
+function computeNormals(path, center) {
+  const pts = path.pts;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i > 0 ? i - 1 : 0];
+    const b = pts[i < n - 1 ? i + 1 : n - 1];
+    let tx = b.x - a.x, ty = b.y - a.y;
+    const L = Math.hypot(tx, ty) || 1;
+    tx /= L; ty /= L;
+    pts[i].nx = -ty;
+    pts[i].ny = tx;
+  }
+  if (center) {
+    const p0 = pts[0];
+    const rx = p0.x - center.x, ry = p0.y - center.y;
+    if (rx * p0.nx + ry * p0.ny < 0) { p0.nx = -p0.nx; p0.ny = -p0.ny; }
+  }
+  for (let i = 1; i < n; i++) {
+    if (pts[i].nx * pts[i - 1].nx + pts[i].ny * pts[i - 1].ny < 0) {
+      pts[i].nx = -pts[i].nx;
+      pts[i].ny = -pts[i].ny;
+    }
+  }
+  return path;
+}
+
+// 层级：按弧长区间给骨架样本打 z
+function assignLayers(path, spec) {
+  const pts = path.pts;
+  for (let i = 0; i < pts.length; i++) pts[i].z = 0;
+  if (!spec) return path;
+  for (let k = 0; k < spec.length; k++) {
+    const seg = spec[k];
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].s >= seg.from && pts[i].s <= seg.to) pts[i].z = seg.z;
+    }
+  }
+  return path;
+}
+
+// 连续同层区间
+function layerRuns(path) {
+  const pts = path.pts;
+  const runs = [];
+  let i0 = 0;
+  for (let i = 1; i <= pts.length; i++) {
+    if (i === pts.length || pts[i].z !== pts[i0].z) {
+      runs.push({ z: pts[i0].z, i0: i0, i1: i - 1 });
+      i0 = i;
+    }
+  }
+  return runs;
+}
+
+// 轨道折线 = 骨架沿法线偏移
+function buildRail(path, offset) {
+  const pts = path.pts;
+  const out = new Array(pts.length);
+  for (let i = 0; i < pts.length; i++) {
+    out[i] = {
+      x: pts[i].x + pts[i].nx * offset,
+      y: pts[i].y + pts[i].ny * offset,
+      s: pts[i].s,
+      z: pts[i].z
+    };
+  }
+  return out;
+}
+
+// 曲率 κ（=1/ρ，带符号）。用三点外接圆公式。
+function curvatureAt(pts, i) {
+  const n = pts.length;
+  const a = pts[i > 0 ? i - 1 : 0];
+  const b = pts[i];
+  const c = pts[i < n - 1 ? i + 1 : n - 1];
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const bcx = c.x - b.x, bcy = c.y - b.y;
+  const acx = c.x - a.x, acy = c.y - a.y;
+  const crossv = abx * bcy - aby * bcx;
+  const denom = Math.hypot(abx, aby) * Math.hypot(bcx, bcy) * Math.hypot(acx, acy);
+  if (denom < 1e-9) return 0;
+  return (2 * crossv) / denom;
+}
+
+function segCross(o, a, b) {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+function segIntersect(a, b, c, d) {
+  const d1 = segCross(c, d, a);
+  const d2 = segCross(c, d, b);
+  const d3 = segCross(a, b, c);
+  const d4 = segCross(a, b, d);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    const t = d1 / (d1 - d2);
+    return { x: c.x + (d.x - c.x) * t, y: c.y + (d.y - c.y) * t };
+  }
+  return null;
+}
+
+// 自交检测（对折线抽稀后两两求交）
+function selfCrossings(poly, opts) {
+  opts = opts || {};
+  const step = Math.max(1, opts.step || 8);
+  const segs = [];
+  for (let i = 0; i + step < poly.length; i += step) {
+    const j = Math.min(poly.length - 1, i + step);
+    const a = poly[i], b = poly[j];
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-6) continue;
+    segs.push({ a: a, b: b, i0: i, i1: j });
+  }
+  const out = [];
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      if (segs[j].i0 - segs[i].i1 < step * 2) continue; // 相邻段跳过
+      const hit = segIntersect(segs[i].a, segs[i].b, segs[j].a, segs[j].b);
+      if (hit) out.push({ x: hit.x, y: hit.y, s1: segs[i].a.s, s2: segs[j].a.s });
+    }
+  }
+  return out;
+}
+
+// 轨道校验器（DESIGN.md §2.4）
+function validateTrack(path, mt, opts) {
+  opts = opts || {};
+  const issues = [];
+  const maxOffset = opts.maxOffset != null ? opts.maxOffset : mt.d / 2;
+  const pts = path.pts;
+
+  // 1) 曲率 vs 偏移：κ·offset >= 1 时内偏轨道会自己折叠
+  let worst = 0, worstS = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const need = Math.abs(curvatureAt(pts, i)) * maxOffset;
+    if (need > worst) { worst = need; worstS = pts[i].s; }
+  }
+  if (worst >= 1) {
+    issues.push({ code: 'CURVATURE_OFFSET', severity: 'error', s: worstS,
+      detail: '偏移 ' + maxOffset.toFixed(1) + 'px 超过最小曲率半径；内偏轨道会折叠' });
+  } else if (worst > 0.85) {
+    issues.push({ code: 'CURVATURE_TIGHT', severity: 'warn', s: worstS,
+      detail: '偏移接近最小曲率半径（占比 ' + worst.toFixed(2) + '），弯道处珠距会明显压缩' });
+  }
+
+  // 2) 间距不等式（代数保证，仍然断言，防止有人改常量改坏）
+  if (mt.d < mt.R + mt.r) {
+    issues.push({ code: 'RAIL_OVERLAP', severity: 'error', s: 0,
+      detail: '两轨中心距 ' + mt.d.toFixed(1) + ' < 半径和 ' + (mt.R + mt.r).toFixed(1) });
+  }
+  if (mt.p < 2 * mt.R) {
+    issues.push({ code: 'BEAD_OVERLAP', severity: 'error', s: 0,
+      detail: '同轨球心距 ' + mt.p.toFixed(1) + ' < 直径 ' + (2 * mt.R).toFixed(1) });
+  }
+
+  // 3) 自交：同层 = 遮挡无解（error）；跨层 = 合法桥（info）
+  const rails = opts.rails || [mt.d / 2, -mt.d / 2];
+  for (let k = 0; k < rails.length; k++) {
+    const poly = buildRail(path, rails[k]);
+    const xs = selfCrossings(poly, { step: opts.step || 8 });
+    for (let m = 0; m < xs.length; m++) {
+      const x = xs[m];
+      const z1 = path.zAt(x.s1);
+      const z2 = path.zAt(x.s2);
+      if (z1 === z2) {
+        issues.push({ code: 'SELF_CROSS_SAME_Z', severity: 'error', x: x.x, y: x.y, s: x.s1,
+          detail: '同一 z 层 (' + z1 + ') 自交，遮挡关系无解' });
+      } else {
+        issues.push({ code: 'BRIDGE', severity: 'info', x: x.x, y: x.y, s: x.s1,
+          detail: '跨层桥 z' + z1 + ' / z' + z2 });
+      }
+    }
+  }
+  return issues;
+}
+
+
+// ===== src/spines.js =====
+// 骨架原型（DESIGN.md §5.1）。返回 spineFn(u) -> {x,y}（像素坐标）。
+// 关键：接缝必须 C1 连续，否则法线偏移会在接缝处折叠（校验器会报 CURVATURE_OFFSET）。
+
+
+
+
+// ★★ §62 轨道长度：按**这一关自己的球数**定，不再所有关共用一个 1.9 圈螺旋。
+//
+//   起因（用户：「新手关没必要再来一个长长的轨道吧？或者说其实普遍不需要吧？」）+ 实测：
+//   20 颗球 × 球距 39.5 = 790 单位，而 1.9 圈的螺旋有 3204 单位 ——
+//   **t1 把这一关所有的球全堆上轨道，也只占 25%**。换手速更慢的玩家也一样：
+//   球数是关卡的硬上限，所以那段轨道按构造就用不到。
+//
+//   规则：轨道至少装得下这一关**全部的球**，留 25% 余量。
+//   实测 L 与 turns 几乎成正比（900x900 视图下 1 圈 ≈ 1704 单位），所以直接反解 turns。
+//
+//   ⚠ 无尽关（ballBudget = 0）不套这条 —— 它的球数没有上限，轨道要按最长的来。
+//
+// ★★ §63 但轨道**不能短到没有弧度**（我试过把练习关做成一条直线，做不到）：
+//   球距 39.5、球半径 19 —— 球几乎是挨着的，所以**在任何距离上相邻两颗的视角都几乎重叠**
+//   （距离 h 处相邻球夹角 atan(39.5/h)，而一颗球的视角宽 2·asin(19/dist)，两者恒差不到 1°）。
+//   实测直线排布：12 发里 5 发擦到隔壁那颗，整排变成 122112211 的废球。
+//   螺旋/弧线不一样 —— 球分布在不同半径上，每颗都有独立的角度，所以打得准。
+//   结论：练习关用 **0.75 圈的小弧**（球正好铺满），而不是直线，也不是 1.9 圈的大螺旋。
+const UNITS_PER_TURN = 1704;    // 900x900 视图、innerRatio 0.32 下，1 圈螺旋的轨道长
+
+function turnsForBudget(view, budget) {
+  if (!(budget > 0)) return DESIGN.turns;                 // 无尽关：球无上限，用最长轨道
+  const p = metrics(view.scale).p;                        // 一颗球占的弧长
+  const cap = budget * 1.25;                              // 要装得下全部球，再留 25% 余量
+  const perTurn = UNITS_PER_TURN * (Math.min(view.w, view.h) / 900);
+  const t = cap * p / perTurn;
+  // 下限 0.55 圈：再短就不像一条"轨道"了（会退化成一小段弧）
+  return Math.max(0.55, Math.min(DESIGN.turns, t));
+}
+
+// 经典螺旋内收：rad 1 -> innerRatio，共 turns 圈
+function spiralSpine(view, level) {
+  const turns = (level && level.turns != null)
+    ? level.turns
+    : turnsForBudget(view, level && level.ballBudget);
+  const inner = level && level.innerRatio != null ? level.innerRatio : DESIGN.innerRatio;
+  const phase = -Math.PI / 2;
+  return function (u) {
+    const th = phase + u * turns * TAU;
+    const rad = 1 - (1 - inner) * u;
+    return { x: view.cx + Math.cos(th) * rad * view.rx, y: view.cy + Math.sin(th) * rad * view.ry };
+  };
+}
+
+// 遮挡演示骨架：内收螺旋 + 出核孔回程。
+// 回程不是拼接的贝塞尔，而是同一条极坐标曲线：把 dr/dθ 从 -a 平滑过渡到 +b，
+// 于是全程 C1 连续（接缝处不可能出现折角），而回程的半径增长必然追上前一圈 -> 自然产生跨层桥。
+function crossReturnSpine(view, level) {
+  const r1 = 0.50;      // 内收终点半径
+  const turnsIn = 1.6;
+  const turnsOut = 0.9;
+  const r2 = 0.88;      // 回程终点半径（降解洞穴）
+  const th1 = turnsIn * TAU;
+  const dth = turnsOut * TAU;
+  const a = (1 - r1) / th1;                     // 内收段 dr/dθ（正数，代表向内）
+  const b = 2 * (r2 - r1) / dth + a;            // 解出回程末端 dr/dθ，使 r(th1+dth) = r2
+  const phase = -Math.PI / 2;
+
+  function radiusAt(t) {   // t = θ - phase ∈ [0, th1+dth]
+    if (t <= th1) return 1 - (1 - r1) * (t / th1);
+    const s = Math.min(1, (t - th1) / dth);
+    return r1 - a * dth * s + (a + b) * dth * (s * s * s - s * s * s * s / 2);
+  }
+
+  const fn = function (u) {
+    const t = u * (th1 + dth);
+    const th = phase + t;
+    const rad = radiusAt(t);
+    return { x: view.cx + Math.cos(th) * rad * view.rx, y: view.cy + Math.sin(th) * rad * view.ry };
+  };
+  fn.junctionU = th1 / (th1 + dth);   // 内收/回程接缝所在的 u（层级分界用它）
+  return fn;
+}
+
+
+// ===== src/levels.js =====
+// 关卡配方（DESIGN.md §5.3 / §55）。三个"清空过关"的有限球数关 + 一个无尽关。
+//
+// ★ 为什么关卡必须带球数（DESIGN.md §55）—— 用户报的 bug 的根因：
+//   用户要的「把场上清光 = 胜利」和「无限出球」在逻辑上**互斥**：无限出球时链子
+//   下一帧就从出球口补上一颗，「场上为空」只是清球后的一瞬间 —— 拿它判赢就会秒过关。
+//   原版 Zuma 的解法是每关给定球数（CurveDesc::mNumBalls）：**发完 + 清光**才算通关。
+//   于是本作分两类关卡：
+//     · 有限球数关（ballBudget > 0）—— 过关 = 预算发满 + 场上清空（3n 消清光或爆炸炸光都算）
+//     · 无尽关（ballBudget === 0）—— 过关 = 分数达标，无限出球保留在这
+//   之前三个关都没写 ballBudget，全都退回 DESIGN.ballBudget = 0，
+//   于是 scene.js 里那条"清空过关"分支**从来没被执行过**（死规则），
+//   用户看到的正是"炸光了却不过关"。
+
+
+
+const LEVELS = [
+  {
+    id: 'spiral-outer',
+    name: '螺旋 · 出球道在外',
+    short: '螺旋·外',
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-outer',
+    layers: null,
+    prefill: 14,
+    // 本关场上总共出现过的球数上限（含开局铺的 prefill）。
+    // 48 颗 @冒球率 1.06 颗/秒 ≈ 45 秒的出球量，给玩家足够操作余地。
+    ballBudget: 48,
+    // Infinity = 这一关**不**走分数过关。清空就是唯一目标，
+    // 否则 500 分（=50 颗）会抢在清空前面把关卡结束掉。
+    scoreTarget: Infinity,
+  },
+  {
+    id: 'spiral-inner',
+    name: '螺旋 · 出球道在内',
+    short: '螺旋·内',
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-inner',
+    layers: null,
+    prefill: 14,
+    ballBudget: 48,
+    scoreTarget: Infinity,
+  },
+  {
+    id: 'cross-return',
+    name: '交叉演示 · 遮挡与桥',
+    short: '交叉桥',
+    makeSpine: crossReturnSpine,
+    railOrder: 'spawn-outer',
+    // 回程段放在上层：跨层相交 = 合法桥；同层自交 = 报错
+    layers: function (path, spine) {
+      const cut = path.sAtU(spine.junctionU != null ? spine.junctionU : 0.64);
+      return [
+        { from: 0, to: cut, z: 0 },
+        { from: cut, to: path.length, z: 1 }
+      ];
+    },
+    prefill: 16,
+    ballBudget: 60,
+    scoreTarget: Infinity,
+  },
+  {
+    // ★ 无尽关：把"原本的无限出球"原样保留在这里。
+    //   它没有"打完"的概念，所以过关只能靠分数 —— 见 config.js DESIGN.scoreTarget。
+    id: 'endless',
+    name: '无尽 · 无限出球',
+    short: '无尽',
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-outer',
+    layers: null,
+    prefill: 18,
+    ballBudget: 0,
+    scoreTarget: 500,
+  }
+];
+
+// ==================== §60 新手关：逐步拆分 ====================
+//
+// 用户："给我们的 RNA 灵感祖玛写几个新手关卡，逐步拆分。"
+//
+// ★★ ①~④ 是**静止练习关**（§63）：连轨道都没有。
+//   起因（用户）：「新手关如果说只是为了让你看看匹配什么球，没必要再来一个长长的轨道吧？
+//   或者说其实普遍不需要吧？」—— 上一版我把轨道缩短了，但那是治标：
+//   ①~④ 教的全是"配对规则"，而轨道、洞穴、会前进的链子**跟这一课毫无关系** ✗
+//   所以这四关用的是直线骨架 + 不前进 + 无洞穴：一排静止的球 + 旁边平行的三消道，
+//   "配对 = 小球落到旁边那条道上"一眼就懂，别的什么都不出现。
+//   ⑤「洞穴」才是**第一次出现轨道**的那一关 —— 它教的正好就是轨道带来的东西。
+//
+// 原则：**一关只教一件事，而且必须能"看得见"。** 所以要这几个字段：
+//   still    静止练习关：不前进、不出球、没有洞穴 -> 也就没有失败
+//
+// ★★ 静止关有一条**硬约束：场上球数必须是 3 的倍数。**
+//   原因是吸附飞行要 0.3 秒 —— 玩家连打几发时，那几颗小球会**同时落位**，
+//   于是 run 从 0 直接跳到 4（跳过了 3）。真实关卡里链子还在冒球，补一颗到 6 就解了；
+//   但静止关没有新球也没有洞穴，一旦出现 3n+1 就是死局。
+//   实测 t4（爆炸后剩 7 颗）就卡在这里：配对全部 -> run=7 -> 永远消不掉。
+//   test-tutorial 里有一条断言专门盯这个不变量。
+//   bases    本关只出现哪几种碱基 —— 信息量是最贵的资源，第一关只给 A/U 两色
+//   script   固定开局序列 —— 有些课（尤其 §28 的死球）必须摆出**确定的局面**，
+//            随机是碰不到的；写法 "A1 U1 A0"，1 = 开局就已配对
+//   speed    珠串推进速度 —— 前两关要慢到玩家有余裕看
+//   hint     这一关在教什么（HUD 直接显示，不写"请点击此处"那种废话）
+//   startWpFrac  开局把整链往前挪（占轨道全长的比例）—— 教"被洞穴吞"时得让危险近在眼前
+//
+// 每条 hint 都对应 DESIGN.md 里一条已经成立的规则，不是临时编的话术：
+//   ① 反色        §23 调色板：互补碱基必须互为反色 -> 玩家不用背配对表
+//   ② 三的倍数    §19/§4.6 3n 消；「N 颗 · 还差 M」的徽章已经在 HUD 上
+//   ③ 五色球      §4.4 配对表 A–U / A–T / G≡C（A 是唯一的双配碱基）
+//   ④ 配错的代价  §29/§30 2 态：错误配对 -> mark 2 -> 爆炸，**且不扣分**
+//   ⑤ 洞穴        §A15 失败条件与祖玛一致：队头滚进洞穴被吞，扣命
+//   ⑥ 加球        §46 一发要么匹配要么并入；§28.5 加球用来调"序列长度"
+//   ⑦ 死球        §28 ★ 1-间隔死球：11 0 11 里配对中间那颗 = 陷阱（变成 5）
+//   ⑧ 综合        前面全用上
+
+const TUTORIALS = [
+  {
+    id: 't1-pair',
+    name: '① 配对',
+    short: '配对',
+    makeSpine: spiralSpine,
+    turns: 0.75,
+    railOrder: 'spawn-outer',
+    layers: null,
+    still: true,
+    centerChain: true,
+    // ★★ §64 这一关**只教配对**：不消球、不爆炸、不用凑三颗。
+    //   用户：「第一关融入了三的倍数，不太对」—— 对。① 名义上教"看颜色发反色"，
+    //   可玩家一配对就碰上 3n 消，两条规则同时压上来，第一关就不干净了。
+    noClear: true,
+    goal: 'matchAll',
+    prefill: 12,
+    ballBudget: 12,
+    scoreTarget: Infinity,
+    hint: [
+      '球面颜色和字母互为反色 —— 打一颗反色的，就把它「读出」。',
+      '这一关不用凑三颗：把 12 颗全读出来就过关。'
+    ],
+  },
+  {
+    id: 't2-multiple',
+    name: '② 三的倍数',
+    short: '三的倍数',
+    makeSpine: spiralSpine,
+    turns: 0.75,
+    railOrder: 'spawn-outer',
+    layers: null,
+    still: true,
+    centerChain: true,
+    // 4 已读 + 5 未读 = 9。正确走法：补 2 颗 -> run=6 消掉 -> 剩 3 颗 -> 再补 3 颗 -> 过关。
+    script: 'A1 A1 A1 A1 A0 U0 G0 C0 U0',
+    ballBudget: 9,
+    scoreTarget: Infinity,
+    hint: [
+      '这一关开始要消球了：连着读出的球**必须是 3 的倍数**才能消。',
+      '看徽章上的「还差 M」—— 差几颗就再补几颗。'
+    ],
+  },
+  {
+    id: 't3-wrong',
+    name: '③ 配错的代价',
+    short: '配错的代价',
+    makeSpine: spiralSpine,
+    turns: 0.75,
+    railOrder: 'spawn-outer',
+    layers: null,
+    still: true,
+    centerChain: true,
+    // 12 颗：第一帧 A1/A2/A1 一起炸掉 3 颗 -> 剩下 9 颗（3 的倍数，见 §63.3 的硬约束）。
+    script: 'A1 A2 A1 A0 U0 A0 U0 A0 U0 A0 U0 A0',
+    ballBudget: 12,
+    scoreTarget: Infinity,
+    // ★ §64 用户：「第 4 关没有讲具体啥时候爆炸。需要合适的文字说明。」
+    //   规则就是 run.js 的 findExplosion：灰球左右两颗都已读出、且**状态相同**（都 1 或都 2）才炸。
+    hint: [
+      '打错颜色 = 灰球。灰球**不会立刻炸** ——',
+      '要等它左右两颗都已经读出、而且**状态一样**（都配对 / 都配错）时，才连它一起炸掉 3 颗。',
+      '刚才那一炸就是这么来的。不扣分，但那一段白配了。'
+    ],
+  },
+  {
+    id: 't4-insert',
+    name: '④ 加球',
+    short: '加球',
+    makeSpine: spiralSpine,
+    turns: 0.75,
+    railOrder: 'spawn-outer',
+    layers: null,
+    // ★ §65 加球也放在静止练习里（用户：「洞穴往后放放」）——
+    //   插入靠的是绳模型的"顶开"，而静止关**速度归零但绳模型照跑**，
+    //   所以插一颗照样会把前面那截顶开，不需要轨道、更不需要洞穴。
+    still: true,
+    centerChain: true,
+    bases: ['A', 'U'],
+    prefill: 12,
+    ballBudget: 12,
+    scoreTarget: Infinity,
+    hint: [
+      '按 Tab（手机点右下角）切到「加球」—— 往链里插一颗，序列的长度就变了。',
+      '凑不成 3 的倍数时，这是除了消球之外的另一种调整手段。',
+      '插错了按 R 重来。'
+    ],
+  },
+  {
+    id: 't5-deadball',
+    name: '⑤ 死球',
+    short: '死球',
+    makeSpine: spiralSpine,
+    turns: 0.75,
+    railOrder: 'spawn-outer',
+    layers: null,
+    still: true,
+    centerChain: true,
+    bases: ['A', 'U'],
+    // ★★ §28 的 1-间隔死球：11 0 11。两段各 2 颗，中间夹 1 颗没读的。
+    //   最自然的操作就是"把中间那颗也读了" —— 于是两段并成 5，反而更远。
+    //   9 颗（3 的倍数）：配上中间那颗 = 5，再补 1 颗 = 6 消掉，剩 3 颗 -> 再消 -> 过关。
+    script: 'A1 A1 U0 A1 A1 A0 A0 A0 A0',
+    ballBudget: 9,
+    scoreTarget: Infinity,
+    hint: [
+      '两段各 2 颗，中间夹着 1 颗没读的。',
+      '★ 别急着配中间那颗：配了它，两段会并成 5 颗，反而更远。',
+      '去把后面那几颗凑成一段；真踩了坑，就再补一颗到 6。'
+    ],
+  },
+  {
+    id: 't6-cave',
+    name: '⑥ 洞穴',
+    short: '洞穴',
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-outer',
+    layers: null,
+    bases: ['A', 'U'],
+    script: 'A U A U A U A U A U',
+    // 开局把队头摆到轨道 72% 处：危险要看得见，玩家才会在意
+    startWpFrac: 0.72,
+    ballBudget: 22,
+    scoreTarget: Infinity,
+    speed: 14,
+    hint: [
+      '★ 到这里才有轨道：球会一直往洞穴爬，队头滚进去就扣一条命。',
+      '它现在离洞口很近 —— 先把最前面那几颗消掉。'
+    ],
+  },
+  {
+    id: 't7-mix',
+    name: '⑦ 综合',
+    short: '综合',
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-inner',
+    layers: null,
+    ballBudget: 36,
+    prefill: 16,
+    scoreTarget: Infinity,
+    speed: 26,
+    hint: [
+      '把前面学的都用上：反色配对、凑 3 的倍数、别去配 1-间隔的那颗。'
+    ],
+  }
+];
+
+// 游戏里实际用的关卡表：新手关在前，原本那四个关在后。
+// ⚠ 故意**不改** LEVELS 本身 —— 测试与探针大量依赖 LEVELS[0] 就是 spiral-outer，
+//   把新手关塞进去会把几十条断言的含义悄悄改掉（这类"改测试含义"的坑本轮已经踩过）。
+const ALL_LEVELS = TUTORIALS.concat(LEVELS);
+
+// ===== src/rng.js =====
+// 确定性随机数：同 seed 必产出同序列（单元测试、回放、关卡复现都依赖它）
+
+function makeRng(seed) {
+  let a = (seed >>> 0) || 0x9e3779b9;
+  const rng = function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  rng.int = function (n) { return Math.floor(rng() * n); };
+  rng.pick = function (arr) { return arr[rng.int(arr.length)]; };
+  rng.seed = seed >>> 0;
+  return rng;
+}
+
+
+// ===== src/chain.js =====
+// U3 珠串模型：绳子/推动模型，逐行依据原版 CurveMgr::AdvanceBalls() 复刻。
+// 见 refs/circleshoot/NOTES.md §3。纯逻辑：只存"沿轨道的弧长 wp"，不碰 DOM 也不碰几何。
+//
+// 数组约定：**队头在前**，balls[0] 最靠近洞穴（wp 最大），balls[n-1] 是刚冒出来的队尾。
+
+
+
+// 相邻两颗球"相接"所需的弧长距离。**逐对算半径**：原版全同尺寸才用 2*defaultRadius，
+// 我们两轨球大小不同（U2 的 1:√2），必须逐对算，否则大小球相邻时会错判。
+function touchDist(mt, a, b) {
+  return a.r + b.r + mt.linkGap;
+}
+
+function makeChain(mt, opts) {
+  opts = opts || {};
+  return {
+    mt: mt,
+    balls: [],
+    speed: 0,
+    targetSpeed: opts.speed != null ? opts.speed : DESIGN.chainSpeed * mt.scale,
+    accel: DESIGN.chainAccel * mt.scale,
+    decel: DESIGN.chainDecel * mt.scale,
+    slowDistance: DESIGN.slowDistance * mt.scale,
+    slowFactor: DESIGN.slowFactor,
+    spawnWp: opts.spawnWp != null ? opts.spawnWp : 0,
+    stopTime: 0,            // 后退期间暂停推进的剩余帧数（原版 mStopTime）
+    freezeTime: 0,          // §57 冻结反应的剩余秒数（>0 时整链不前进）
+    nextId: 1,
+    stats: { spawned: 0, drained: 0, removed: 0 }
+  };
+}
+
+// 速度平滑：加速慢、减速快
+function smoothSpeed(ch, dt) {
+  const t = ch.targetSpeed;
+  if (ch.speed < t) ch.speed = Math.min(t, ch.speed + ch.accel * dt);
+  else if (ch.speed > t) ch.speed = Math.max(t, ch.speed - ch.decel * dt);
+  return ch.speed;
+}
+
+// 洞穴前的减速带：越靠近越慢（原版 mSlowDistance / mSlowFactor）
+function speedAtHead(ch, headWp, curveLength) {
+  if (!(ch.slowDistance > 0)) return ch.speed;   // B7 冻结：减速带未启用
+  const slope = curveLength - ch.slowDistance;
+  if (headWp <= slope) return ch.speed;
+  if (headWp >= curveLength) return ch.speed / ch.slowFactor;
+  const t = (headWp - slope) / ch.slowDistance;
+  return ch.speed * (1 - t) + (ch.speed / ch.slowFactor) * t;
+}
+
+// 一帧推进：只推队尾 -> 推动逐节向队头传递（遇空隙即断）
+function advanceChain(ch, dt, curveLength) {
+  const balls = ch.balls;
+  const n = balls.length;
+
+  // ★ §57 冻结反应：整链停止前进（原神里冻结 = 无法行动）。
+  //   喂入也一起停 —— 冒球要靠队尾腾出空间，链子不动自然就喂不进来。
+  if (ch.freezeTime > 0) {
+    ch.freezeTime = Math.max(0, ch.freezeTime - dt);
+    return;
+  }
+
+  // ★ 后退（CurveMgr::AdvanceBackwardBalls 的同构实现，DESIGN.md §36）。
+  //   每颗球自带 backLeft（剩余帧数）/ backSpeed（自己的速度）；一个扫描函数负责传播；
+  //   只要这一帧有球后退，就设 stopTime（原版 mStopTime = 20）并**跳过推进**。
+  const movedBack = advanceBackwardBalls(ch, dt);
+  if (movedBack) ch.stopTime = Math.max(ch.stopTime, DESIGN.backStopFrames);
+  recycleFront(ch);
+  if (movedBack || ch.stopTime > 0) {
+    if (ch.stopTime > 0) ch.stopTime -= 1;
+    return;
+  }
+
+  smoothSpeed(ch, dt);
+  if (n === 0) return;
+
+  const head = balls[0];
+  const effSpeed = curveLength != null ? speedAtHead(ch, head.wp, curveLength) : ch.speed;
+  balls[n - 1].wp += effSpeed * dt;
+
+  for (let i = n - 2; i >= 0; i--) {
+    const back = balls[i + 1];
+    const front = balls[i];
+    const d = back.wp + touchDist(ch.mt, front, back);
+    if (front.wp < d) {
+      // visOff 只是渲染用的视觉滞后量（此球被顶开了一个跳变），不参与任何判定
+      front.visOff = (front.visOff || 0) - (d - front.wp);
+      front.wp = d;
+    }
+  }
+}
+
+// 施加一次后退冲量。totalDist = 这次总共要退多少（px），frames = 用多少帧退完 —— 对应原版的
+// mBackwardsCount / mBackwardsSpeed 一对参数（原版：30 帧、速度 = comboCount * 1.5）。
+// ★ 给**某一颗球**施加后退（对应原版 Ball::SetBackwardsCount / SetBackwardsSpeed）。
+//   只标记这一颗；传播交给 advanceBackwardBalls —— 这比"预先给整段打标记"忠实得多，
+//   因为原版就是"标记一颗 + 每帧沿相接关系往外拖、遇缝即断"。
+function applyBackward(ch, i, frames, dist) {
+  const b = ch.balls[i];
+  if (!b) return null;
+  const f = Math.max(1, frames);
+  // 距离**累加**（同一帧级联消多段时，后退量应当叠加），帧数取较长者。
+  // 原版没有这条，是因为它每次只给一颗球设 count；我们级联时会连续调用。
+  const remain = (b.backLeft > 0) ? b.backSpeed * (b.backLeft / 60) : 0;
+  b.backLeft = Math.max(b.backLeft || 0, f);
+  b.backSpeed = (remain + dist) / (b.backLeft / 60);   // px/秒
+  return b.backSpeed;
+}
+
+function hasBackward(ch) {
+  const balls = ch.balls;
+  for (let i = 0; i < balls.length; i++) if (balls[i].backLeft > 0) return true;
+  return false;
+}
+
+// ★ CurveMgr::AdvanceBackwardBalls 的同构实现：
+//   从**洞端**（下标 0）扫到**出球端**（下标 n-1）；带 backLeft 的球按自己的速度后退，
+//   并把**身后（朝出球端）相接的球一起拖**；缝隙大于一步就停止传递。
+//
+//   命名陷阱：原版的 front() 是**出球端**、back() 是**洞端**，和中文习惯相反。
+//   我们的下标 0 = 洞端、n-1 = 出球端。
+//
+//   ⚠ 这里试过一版"夹紧"（不允许任何球退到冒球口之外），**已删除**，两个原因：
+//     1) 它管不了"该不该退"——那是规则层的事，由消除位置决定（见 scene.js pushBack）。
+//     2) 它有副作用：消除段离洞很远时，"洞端那一侧"会一直延伸到接近出球口，
+//        夹紧按那段最靠出球端那颗的余量卡住 -> k×touchDist 只兑现一点点 ✗
+//   退到冒球口之外的球交给 recycleFront 回收 —— 这正是原版 RemoveBallsAtFront 的行为。
+function advanceBackwardBalls(ch, dt) {
+  const balls = ch.balls;
+  let anyMoved = false;
+  let collided = false;
+  let speed = 0;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (b.backLeft > 0) {
+      speed = b.backSpeed;
+      b.wp -= speed * dt;
+      b.backLeft -= 1;
+      collided = true;
+      anyMoved = true;
+    }
+    if (!collided) continue;
+    const nb = balls[i + 1];
+    if (!nb) break;
+    const T = touchDist(ch.mt, b, nb);
+    if (b.wp - nb.wp <= T + 1e-6) {
+      nb.wp -= speed * dt;                       // 挨着 -> 同速拖
+    } else {
+      const over = (b.wp - T) - nb.wp;           // 缝隙比一步还小？
+      if (over < speed * dt) {
+        nb.wp = b.wp - T;                        // 顶到刚好相切，用缩小后的速度继续传
+        speed = dt > 0 ? over / dt : 0;
+      } else {
+        collided = false;                        // 缝太大 -> 停止传递
+      }
+    }
+  }
+  return anyMoved;
+}
+
+
+// 回收滚出出球端的球（对应原版 RemoveBallsAtFront，wp < 1 的球被回收）
+function recycleFront(ch) {
+  const balls = ch.balls;
+  let cut = 0;
+  while (cut < balls.length && balls[balls.length - 1 - cut].wp < ch.spawnWp) cut += 1;
+  if (cut > 0) {
+    balls.length -= cut;
+    ch.stats.leftField = (ch.stats.leftField || 0) + cut;
+  }
+  return cut;
+}
+
+// 从队尾冒一颗新球；必须等队尾让出位置（原版 AddBall 的同款约束）
+function spawnBall(ch, base, radius) {
+  const balls = ch.balls;
+  const r = radius != null ? radius : ch.mt.R;
+  const cand = { wp: ch.spawnWp, base: base, r: r, id: ch.nextId++ };
+  if (balls.length > 0) {
+    const tail = balls[balls.length - 1];
+    if (tail.wp < cand.wp + touchDist(ch.mt, cand, tail)) return null;
+  }
+  balls.push(cand);
+  ch.stats.spawned += 1;
+  return cand;
+}
+
+// 队头越过洞穴即被吸入
+function drainHead(ch, curveLength) {
+  const out = [];
+  while (ch.balls.length > 0 && ch.balls[0].wp >= curveLength) {
+    out.push(ch.balls.shift());
+    ch.stats.drained += 1;
+  }
+  return out;
+}
+
+// 按"相接"判据切出连续段（队头在前）。空隙 = 相邻两球间距 > touchDist。
+function chainRuns(ch) {
+  const balls = ch.balls;
+  const runs = [];
+  if (balls.length === 0) return runs;
+  let i0 = 0;
+  for (let i = 0; i + 1 < balls.length; i++) {
+    const linked = (balls[i].wp - balls[i + 1].wp) <= touchDist(ch.mt, balls[i], balls[i + 1]) + 1e-6;
+    if (!linked) { runs.push({ i0: i0, i1: i }); i0 = i + 1; }
+  }
+  runs.push({ i0: i0, i1: balls.length - 1 });
+  return runs;
+}
+
+function chainHasGap(ch) {
+  return chainRuns(ch).length > 1;
+}
+
+// 闭区间移除（队头在前）
+function removeRange(ch, i0, i1) {
+  const removed = ch.balls.splice(i0, i1 - i0 + 1);
+  ch.stats.removed += removed.length;
+  return removed;
+}
+
+// 预装珠串：关卡开始时轨道上就已经有货（原版关卡配 mNumBalls 一次性铺满）。
+// i=0 放在队头（wp 最大），队尾正好落在 wp=0 的冒球口。
+function prefillChain(ch, count, baseFn) {
+  const T = touchDist(ch.mt, { r: ch.mt.R }, { r: ch.mt.R });
+  for (let i = 0; i < count; i++) {
+    // ★ 必须把下标传给回调（§60）：固定开局序列（level.script）要靠它取第 i 颗。
+    //   ⚠ 这里原来是 baseFn() 空参调用 —— 老的回调都忽略参数所以看不出问题，
+    //     但脚本关会拿到 bs2[NaN] = undefined，**整关的球碱基全是 undefined**：
+    //     既不报错、也配不上，界面上只会看到一排写着 "undefined" 的球。
+    ch.balls.unshift({ wp: i * T, base: baseFn(i), r: ch.mt.R, id: ch.nextId++, n: i, paired: false, pairBase: null });
+  }
+  return ch;
+}
+
+// 把一颗球插进珠串（U12 加球）。只需要"塞进去"，不需要手写顶开逻辑：
+// 相邻间距小于 touchDist 时，下一帧的绳子推动会**自动把队头那侧整体前移一个球位**，
+// 这就是祖玛"插一颗球把珠串顶开"的行为，只是交给绳模型自然完成。
+function insertBall(ch, index, ball) {
+  ch.balls.splice(index, 0, ball);
+  if (ch.stats.inserted == null) ch.stats.inserted = 0;
+  ch.stats.inserted += 1;
+  return ball;
+}
+
+function chainLength(ch) {
+  return ch.balls.length;
+}
+
+
+// ===== src/run.js =====
+// U9 三消道的 3N 消除。纯逻辑，不碰 DOM。
+//
+// ★ 架构（用户 2026-09 定稿）：
+//   出球道 = **原版祖玛逻辑原样保留**（绳模型、真空隙、后段追上来、插入顶开）；
+//   三消道 = **标记序列**，只做匹配；3n 消**只在这个序列上判定**。
+//   两条道互不干扰：匹配不改动出球道，"连续"也不看物理位置。
+//
+// ★ 3N 语义（用户明确）：存在连续的 3n 个 x=1 就**立马**消除。
+//   所以一帧结束时不允许存在长度是 3 的倍数且 >= 3 的 run —— 当帧整段消除，级联到不动点。
+//
+// 记号：x_i ∈ {0,1} 表示序列里第 i 颗主链球是否"已被读出"（在三消道上有绑定小球）。
+
+// 标记是否已"定型"（吸附飞行结束）。1 和 2 都算标记，只是含义不同。
+function isMarked(b) {
+  return b.paired === true && (b.dock == null || b.dock >= 1);
+}
+
+// 定型后的状态值：0 = 空、1 = 正确配对、2 = 错误配对。
+// 存储上仍是两个布尔（paired + wrongMark），这里给出唯一的读取口径。
+function markFinal(b) {
+  if (!isMarked(b)) return 0;
+  return b.wrongMark === true ? 2 : 1;
+}
+
+// 一颗球是否"已被读出"（x=1）：**正确**配对，且吸附飞行已完成。
+// 注意：错误配对（2）在这里和 0 一样返回 false —— 所以 2 会像 0 一样断开 run。
+function isDocked(b) {
+  return isMarked(b) && b.wrongMark !== true;
+}
+
+// ★ 爆炸判定（DESIGN.md §32 / §34）。三条：
+//   1. 两侧**都必须是已定型的标记**（1 或 2）—— 只要有一侧是「没有绑定小球」的球，
+//      这颗 2 就**待定、不爆**。
+//      ⚠ 这一条是用户实测后加回来的：原先把「无绑定球」也当成 0 参与判定，
+//        结果 40 次爆炸里只有 3 次是真正的 121，绝大多数都在把没绑定小球的球
+//        白白卷进去炸掉 —— 玩家看到的就是「我根本没碰那两颗，它们消失了」。
+//   2. 两侧**同为 1** 或**同为 2** -> 爆；一边 1 一边 2 -> 稳。
+//   3. 爆炸移除 3 颗（它 + 左右各一颗），所以参与的球都带绑定小球。
+//      这同时保住了「所有移除都是 3 的倍数」这条统一律。
+//   链首/链尾那颗亦然：它缺一侧真邻居 -> 待定，等冒球把它顶出边界再判。
+function findExplosion(chain) {
+  const balls = chain.balls;
+  for (let i = 1; i < balls.length - 1; i++) {
+    if (markFinal(balls[i]) !== 2) continue;
+    const l = markFinal(balls[i - 1]);
+    const r = markFinal(balls[i + 1]);
+    if (l === 0 || r === 0) continue;
+    if ((l === 1) === (r === 1)) return i;
+  }
+  return -1;
+}
+
+// run = 标记序列上的极大连续区间 [a,b]（只看序列相邻，**与出球道的物理空隙无关**）
+function computeRuns(chain) {
+  const balls = chain.balls;
+  const runs = [];
+  let cur = null;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (!isDocked(b)) { cur = null; continue; }
+    if (cur === null) {
+      cur = { i0: i, i1: i, len: 1, key: b.id };
+      runs.push(cur);
+    } else {
+      cur.i1 = i;
+      cur.len += 1;
+    }
+  }
+  return runs;
+}
+
+// 当前所有"该消"的段：长度是 3 的倍数且 >= 3
+function clearableRuns(chain) {
+  return computeRuns(chain).filter(function (r) { return r.len >= 3 && r.len % 3 === 0; });
+}
+
+// 给渲染用的读数
+function runStatus(run) {
+  const mod = run.len % 3 === 0;
+  return {
+    len: run.len,
+    mod: mod,
+    // 还差几颗到下一个 3 的倍数（本身已是倍数时为 0）
+    toNext: mod ? 0 : (3 - (run.len % 3))
+  };
+}
+
+
+// ===== src/elements.js =====
+// 元素与元素反应（DESIGN.md §57/§58）。纯数据 + 纯函数，不碰场景。
+//
+// ★ 为什么单开一个文件：反应表是**从官方 WIKI 逐条抄下来的**（见 §58 的来源对照），
+//   它是"考证结论"而不是"平衡数值"，把它和场景逻辑混在一起以后就没法核对来源了。
+//
+// 数据来源：https://wiki.biligame.com/ys/元素反应 （2026-08 抓取的 wikitext）
+//   21 种反应分六类：增幅 / 剧变 / 结晶 / 激化 / 月曜 / 星烁。
+//   本作实现**基础 12 种**；月曜（月感电/月绽放/月结晶）与星烁（星超导/星扩散/星辉风旋）
+//   是"需要特定角色天赋才能转化"的亚种，和祖玛玩法无关，**不实现**（§57.6 有说明）。
+
+// ---------- 七元素 ----------
+// ★ attachable = 能否作为"附着元素"（先手）。
+//   风、岩**不能附着**：官方 WIKI 里扩散永远写作「风元素触及火/水/雷/冰」、
+//   结晶永远写作「岩元素触及火/水/雷/冰」—— 从来没有反过来的写法。
+//   所以风/岩只能做**触发元素**（后手），场上不会留着风/岩的附着。
+const ELEMENTS = ['pyro', 'hydro', 'cryo', 'electro', 'dendro', 'geo', 'anemo'];
+const ELEM = {
+  pyro:    { name: '火', color: '#ff7a45', ink: '#3a1204', attachable: true },
+  hydro:   { name: '水', color: '#49b6ff', ink: '#04223a', attachable: true },
+  cryo:    { name: '冰', color: '#a8ecff', ink: '#0b2b38', attachable: true },
+  electro: { name: '雷', color: '#c08cff', ink: '#220b3a', attachable: true },
+  dendro:  { name: '草', color: '#8ede52', ink: '#10300a', attachable: true },
+  geo:     { name: '岩', color: '#ffc94d', ink: '#3a2604', attachable: false },
+  anemo:   { name: '风', color: '#6fe8c8', ink: '#0a332a', attachable: false }
+};
+// 「激元素」不是七元素之一，是原激化留下的状态元素（原神：施加激元素附着）
+const QUICK = 'quick';
+
+function canAttach(elem) {
+  return !!(ELEM[elem] && ELEM[elem].attachable);
+}
+function elemName(elem) {
+  return elem === QUICK ? '激' : (ELEM[elem] ? ELEM[elem].name : '—');
+}
+function elemColor(elem) {
+  return elem === QUICK ? '#d9f24a' : (ELEM[elem] ? ELEM[elem].color : '#8899aa');
+}
+
+// ---------- 反应表 ----------
+// key = 先手(场上已有的附着) + '|' + 后手(本次触发的元素)
+//
+// ★ 倍率的不对称性直接来自 WIKI 的备注：
+//   「正克制」= 水打火、火打冰  -> 2
+//   「逆克制」= 冰打火、火打水  -> 1.5
+//   注意是**后手（触发方）**吃倍率 —— 水打火 2.0 而 火打水 1.5，
+//   所以同一个反应在表里是两条，不能合并。
+//
+// effect = 交给 scene.js 执行的效果名（§57.3 的映射表）：
+//   amp      增幅：该球被消掉时分数乘 mult（对应原神"增幅基于技能伤害倍率"）
+//   explode  剧变：就地移除 3 颗 + 后退（复用爆炸的路径，保持"移除必是 3 的倍数"）
+//   autoPair 自动配对（帮助凑 3n 段）
+//   chain    感电传导：向所有带水附着的球放电
+//   freeze   冻结：该段停止前进
+//   swirl    扩散：把该元素复制到周围
+//   shield   结晶：获得一枚晶片护盾
+//   burn     燃烧：持续自动配对相邻球
+//   core     绽放：生成草原核
+//   quicken  原激化：施加激元素
+const REACTIONS = {
+  // ---- 增幅反应（2 种）----
+  'pyro|hydro':    { id: 'vaporize',   name: '蒸发',   mult: 2.0,  effect: 'amp' },
+  'hydro|pyro':    { id: 'vaporize',   name: '蒸发',   mult: 1.5,  effect: 'amp' },
+  'cryo|pyro':     { id: 'melt',       name: '融化',   mult: 2.0,  effect: 'amp' },
+  'pyro|cryo':     { id: 'melt',       name: '融化',   mult: 1.5,  effect: 'amp' },
+  // ---- 剧变反应（8 种，含碎冰单列）----
+  'electro|pyro':  { id: 'overload',   name: '超载',   mult: 2.75, effect: 'explode' },
+  'pyro|electro':  { id: 'overload',   name: '超载',   mult: 2.75, effect: 'explode' },
+  'electro|cryo':  { id: 'superconduct', name: '超导', mult: 1.5,  effect: 'autoPair' },
+  'cryo|electro':  { id: 'superconduct', name: '超导', mult: 1.5,  effect: 'autoPair' },
+  'electro|hydro': { id: 'electroCharged', name: '感电', mult: 2.0, effect: 'chain' },
+  'hydro|electro': { id: 'electroCharged', name: '感电', mult: 2.0, effect: 'chain' },
+  'cryo|hydro':    { id: 'frozen',     name: '冻结',   mult: 0,    effect: 'freeze' },
+  'hydro|cryo':    { id: 'frozen',     name: '冻结',   mult: 0,    effect: 'freeze' },
+  'dendro|pyro':   { id: 'burning',    name: '燃烧',   mult: 0.25, effect: 'burn' },
+  'pyro|dendro':   { id: 'burning',    name: '燃烧',   mult: 0.25, effect: 'burn' },
+  'dendro|hydro':  { id: 'bloom',      name: '绽放',   mult: 2.0,  effect: 'core' },
+  'hydro|dendro':  { id: 'bloom',      name: '绽放',   mult: 2.0,  effect: 'core' },
+  'dendro|electro':{ id: 'quicken',    name: '原激化', mult: 0,    effect: 'quicken' },
+  'electro|dendro':{ id: 'quicken',    name: '原激化', mult: 0,    effect: 'quicken' },
+  // ---- 风 / 岩：只能当后手 ----
+  'pyro|anemo':    { id: 'swirl',      name: '扩散',   mult: 0.6,  effect: 'swirl' },
+  'hydro|anemo':   { id: 'swirl',      name: '扩散',   mult: 0.6,  effect: 'swirl' },
+  'cryo|anemo':    { id: 'swirl',      name: '扩散',   mult: 0.6,  effect: 'swirl' },
+  'electro|anemo': { id: 'swirl',      name: '扩散',   mult: 0.6,  effect: 'swirl' },
+  'pyro|geo':      { id: 'crystallize', name: '结晶',  mult: 0,    effect: 'shield' },
+  'hydro|geo':     { id: 'crystallize', name: '结晶',  mult: 0,    effect: 'shield' },
+  'cryo|geo':      { id: 'crystallize', name: '结晶',  mult: 0,    effect: 'shield' },
+  'electro|geo':   { id: 'crystallize', name: '结晶',  mult: 0,    effect: 'shield' },
+  // ---- 激化反应的续接（激元素作先手）----
+  'quick|electro': { id: 'aggravate',  name: '超激化', mult: 1.15, effect: 'amp' },
+  'quick|dendro':  { id: 'spread',     name: '蔓激化', mult: 1.25, effect: 'amp' }
+};
+
+// 碎冰：不是"两元素相遇"，而是「冻结状态 + 岩元素/钝击」—— 所以单列，不进上面的表
+const SHATTER = { id: 'shatter', name: '碎冰', mult: 3.0, effect: 'explode' };
+
+function reactionFor(aura, trigger) {
+  if (!aura || !trigger) return null;
+  return REACTIONS[aura + '|' + trigger] || null;
+}
+
+// ==================== 七球模式（§57 改版）====================
+//
+// 用户的定调：「直接来个七球模式，匹配相当于元素反应」。
+// 所以这里**不再是"碱基配对 + 元素附着"两层**，而是一层：
+//
+//   球的身份 = 元素（七种之一）      珠子的身份 = 元素
+//   匹配成功 = 这两个元素之间**有反应**（反应表就是匹配表）
+//   匹配失败 = 两者之间没有反应 -> 走原有的"错误配对 -> 爆炸"
+//
+// 玩家因此不是在找"唯一能配上的那颗"，而是在选"我想要哪个反应"——
+// 这才是"匹配相当于元素反应"这句话真正的玩法含义。
+
+// 球（先手）与珠子（后手）之间有没有反应。
+// quickened = 这颗球身上有激元素（原激化的后续：超激化/蔓激化）。
+function sevenReaction(ballElem, beadElem, quickened) {
+  if (!ballElem || !beadElem) return null;
+  // 激元素优先：原神里带激元素的目标被雷/草触及时走超激化/蔓激化
+  if (quickened) {
+    const q = REACTIONS[QUICK + '|' + beadElem];
+    if (q) return q;
+  }
+  // 球当先手（绝大多数元素都能附着）
+  const a = REACTIONS[ballElem + '|' + beadElem];
+  if (a) return a;
+  // ★ 球是风/岩时**不能作先手**（§57.3），这时反过来查：珠子才是先手、球上的风/岩才是后手。
+  //   倍率仍旧由后手吃，所以"风球 + 火珠 -> 扩散"这样查出来的方向是对的。
+  const b = REACTIONS[beadElem + '|' + ballElem];
+  if (b) return b;
+  return null;
+}
+
+// 能跟这颗球反应的珠子元素（给珠袋池用）。空数组 = 这颗球打不动（理论上不会发生）。
+function beadElemsFor(ballElem, quickened) {
+  const out = [];
+  for (let i = 0; i < ELEMENTS.length; i++) {
+    const e = ELEMENTS[i];
+    if (e === ballElem) continue;                     // 同元素只刷新，不反应 -> 打上去就是废弹
+    if (sevenReaction(ballElem, e, quickened)) out.push(e);
+  }
+  return out;
+}
+
+// 元素在球面上显示的字（一个汉字，直接当"字母"用）
+
+// 元素在球面上显示的字（一个汉字，直接当"字母"用）
+
+function elemGlyph(elem) {
+  return ELEM[elem] ? ELEM[elem].name : (elem === QUICK ? '激' : '?');
+}
+
+// 给 HUD / 事件用的简述
+function describeReaction(r) {
+  if (!r) return '';
+  return r.name + (r.mult > 0 ? ' ×' + r.mult : '');
+}
+
+// ===== src/ribosome.js =====
+// U6 核糖体（玩家）：固定在轨道系统中心，只能旋转瞄准；口中双珠待命。
+// 对应原版 Gun/Gun.cpp，但 demo 不需要后坐力与动画，只保留规则本身。
+
+
+
+
+function makeRibosome(x, y, mt, rng) {
+  return {
+    x: x,
+    y: y,
+    r: DESIGN.ribosomeRadius * mt.scale,
+    aim: -Math.PI / 2,
+    loaded: [rng.pick(BASES), rng.pick(BASES)],   // [0] 在炮口，[1] 待命
+    // ★ 元素（DESIGN.md §57）：与 loaded 平行的数组，索引一一对应。
+    //   故意**不动** loaded 的结构 —— 它是碱基，被一堆测试和 poolFn/freshFn 依赖，
+    //   把元素塞进同一个槽位会把「碱基」和「元素」两层的语义搅在一起。
+    loadedElem: [rng.pick(ELEMENTS), rng.pick(ELEMENTS)],
+    cooldown: 0,
+    // ★ 身份token 的取值域：匹配模式是碱基，七球模式是元素（§57 改版）。
+    //   drawBase 的兜底抽取必须看这个，否则七球模式下会抽回碱基来。
+    tokens: BASES,
+    rng: rng
+  };
+}
+
+function aimAt(rb, tx, ty) {
+  rb.aim = Math.atan2(ty - rb.y, tx - rb.x);
+  return rb.aim;
+}
+
+function rotateAim(rb, d) {
+  rb.aim += d;
+  return rb.aim;
+}
+
+// 空格 / 右键：交换口中两颗（原版同款双珠待命）
+function swapLoaded(rb) {
+  const t = rb.loaded[0];
+  rb.loaded[0] = rb.loaded[1];
+  rb.loaded[1] = t;
+  // 元素跟着一起换 —— 玩家真正想换的往往是元素（碱基只决定「打哪颗」）
+  if (rb.loadedElem) {
+    const e = rb.loadedElem[0];
+    rb.loadedElem[0] = rb.loadedElem[1];
+    rb.loadedElem[1] = e;
+  }
+  return rb.loaded[0];
+}
+
+// 抽碱基。若挂了 poolFn（场景给的可用心池），按 bagBias 的概率从池里抽；
+// 池空则退化为均匀抽。对应当原版 CurveMgr::GetRandomPendingBallColor —— 它就是"从场上存在的颜色里抽"。
+function drawBase(rb) {
+  if (rb.poolFn && rb.rng() < DESIGN.bagBias) {
+    const pool = rb.poolFn();
+    if (pool && pool.length) {
+      // ★ 避免和手里那颗重复：池子里还有别的碱基就换一个（DESIGN.md §39）。
+      //   原先两次是**独立**抽的，池子只有 2 种时重复率就有 50% ——
+      //   两颗一样的话，其中一颗的目标会被另一颗打光，剩下那颗立刻变成废弹。
+      //   实测："两颗手里珠子全都用不上"的帧里，63% 是这个原因。
+      let cand = pool;
+      if (pool.length > 1 && rb.loaded && rb.loaded[0]) {
+        const alt = pool.filter(function (b) { return b !== rb.loaded[0]; });
+        if (alt.length) cand = alt;
+      }
+      return rb.rng.pick(cand);
+    }
+  }
+  return rb.rng.pick(rb.tokens || BASES);
+}
+
+// ★★ 过期刷新（DESIGN.md §54）：手里已有的珠子若"场上已经没有它能配的未配对球"，
+//   就从当前池子里重抽一颗（能配上才换）。
+//
+//   为什么必须有：珠子是**上一发时抽的备用珠**，等它被顶上来已经过了一发的时间，
+//   目标早被配掉/消掉了。实测 **85.7% 的帧手里这颗没有可打的目标**，
+//   发射率只有 0.87 发/秒（冷却允许 6.3），清球 0.7 颗/秒 < 冒球 1.06 颗/秒 -> 必输。
+//   这不是难度问题，是"弹药与目标对不上"。
+function refreshStale(rb) {
+  if (!rb.poolFn || !rb.freshFn) return;
+  for (let k = 0; k < rb.loaded.length; k++) {
+    if (rb.freshFn(rb.loaded[k])) continue;
+    for (let tries = 0; tries < 6; tries++) {
+      const nb = drawBase(rb);
+      if (rb.freshFn(nb)) { rb.loaded[k] = nb; break; }
+    }
+  }
+}
+
+// 抽一个元素。★ 不做「必须可附着」的硬过滤 —— 风/岩是有用的（扩散/结晶），
+//   只是它们需要场上先有附着。这里只保证**不会连着两颗都是风/岩**，
+//   否则玩家会连续两发什么都触发不了（和 §39「避免手里两颗重复」同一个道理）。
+function drawElem(rb) {
+  const first = rb.loadedElem && rb.loadedElem[0];
+  const pool = (first === 'anemo' || first === 'geo')
+    ? ELEMENTS.filter(function (e) { return canAttach(e); })
+    : ELEMENTS;
+  return rb.rng.pick(pool);
+}
+
+function tickRibosome(rb, dt) {
+  refreshStale(rb);
+  if (rb.cooldown > 0) rb.cooldown = Math.max(0, rb.cooldown - dt);
+}
+
+function canFire(rb) {
+  return rb.cooldown <= 0;
+}
+
+// 返回一发"发射请求"（位置/角度/碱基），冷却未好则返回 null。
+function fire(rb) {
+  if (rb.cooldown > 0) return null;
+  const shot = {
+    x: rb.x + Math.cos(rb.aim) * rb.r,
+    y: rb.y + Math.sin(rb.aim) * rb.r,
+    angle: rb.aim,
+    base: rb.loaded[0],
+    elem: rb.loadedElem ? rb.loadedElem[0] : null
+  };
+  rb.loaded[0] = rb.loaded[1];
+  rb.loaded[1] = drawBase(rb);
+  if (rb.loadedElem) rb.loadedElem[1] = drawElem(rb);
+  rb.cooldown = DESIGN.fireCooldown;
+  return shot;
+}
+
+
+// ===== src/projectile.js =====
+// U7 弹丸：子步扫掠碰撞 + 存活期回收。
+// 扫掠判据 = "胶囊测试"（线段到球心的距离 <= 半径和），等价于连续时间的圆-圆相交，
+// 因此再快也不会穿透。原版对应 Ball::Intersects(p1, v1, t)。
+
+
+
+function makeProjectile(shot, mt, mode) {
+  const speed = DESIGN.shotSpeed * mt.scale;
+  return {
+    x: shot.x,
+    y: shot.y,
+    px: shot.x,
+    py: shot.y,
+    vx: Math.cos(shot.angle) * speed,
+    vy: Math.sin(shot.angle) * speed,
+    // 加球模式打出去的是大球（尺寸 = 模式，见 DESIGN.md §46）
+    r: (mode === 'insert' ? mt.R : mt.r) * DESIGN.shotRadiusRatio,
+    base: shot.base,
+    elem: shot.elem || null,      // §57 元素模式：这一发带的是什么元素
+    life: 0
+  };
+}
+
+function advanceProjectile(p, dt) {
+  p.px = p.x;
+  p.py = p.y;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.life += dt;
+  return p;
+}
+
+// 在 (x0,y0)->(x1,y1) 这一段位移上找**最先**撞到的球。
+// 已配对（paired）的球是惰性的：弹丸直接穿过 —— 对应 DESIGN.md §4.2 的合法目标定义。
+function sweepHit(balls, x0, y0, x1, y1, pr, skipPaired) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len2 = dx * dx + dy * dy;
+  let best = -1, bestT = Infinity, hx = 0, hy = 0;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (skipPaired !== false && b.paired === true) continue;
+    const rr = pr + b.r;
+    let t = 0;
+    if (len2 > 1e-12) {
+      t = ((b.x - x0) * dx + (b.y - y0) * dy) / len2;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+    }
+    const cx = x0 + dx * t, cy = y0 + dy * t;
+    const ddx = b.x - cx, ddy = b.y - cy;
+    if (ddx * ddx + ddy * ddy > rr * rr) continue;
+    if (t < bestT) { bestT = t; best = i; hx = cx; hy = cy; }
+  }
+  if (best < 0) return null;
+  return { index: best, t: bestT, x: hx, y: hy };
+}
+
+function projectileExpired(p, view, mt) {
+  if (p.life > DESIGN.shotMaxLife) return true;
+  const m = mt.R * 8;
+  return p.x < -m || p.y < -m || p.x > view.w + m || p.y > view.h + m;
+}
+
+
+// ===== src/scene.js =====
+// 场景装配 + 每帧推进。main.js 与 tools/preview.mjs / 单测共用同一份逻辑（单一真源）。
+// 组合：几何(U2) + 珠串(U3) + 核糖体(U6) + 弹丸与命中分流(U7/U8) + 阅读框(U9) + 生命与计分(U11)
+
+
+
+
+
+
+
+
+
+
+// 珠袋可用池：场上**未配对**大球的互补碱基（去重）。
+// 动机见 DESIGN.md §17.5：纯均匀抽时，随机一发配上的概率只有 6/25 = 24%。
+// ★ 新手关的固定开局序列（DESIGN.md §60）。
+//   写法："A1 U1 A0 U1 A1" —— 字母是碱基，后面跟的 1 表示**开局就已经配对**（默认 0）。
+//   空格随便加，只是为了关卡作者自己看得清。
+//   为什么需要它：有些课必须摆出确定的局面。§28 的 1-间隔死球（11 0 11）随机是碰不到的，
+//   而它恰恰是"配对中间那颗 = 陷阱"这条最重要的反直觉规则。
+function parseScript(str) {
+  const out = [];
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charAt(i);
+    if (c === ' ' || c === ',' || c === '|') continue;
+    // ⚠ 数字是**紧跟着上一颗球的标记**，不是独立的一颗球。
+    //   第一版把它们当成 token 推进去了 —— "A1 A1" 会变成 4 颗球（A,1,A,1），
+    //   带标记的关卡于是全部错位（场上球数是脚本长度的两倍，标记全丢）。
+    if (c === '0' || c === '1' || c === '2') {
+      if (out.length) out[out.length - 1] = out[out.length - 1].charAt(0) + c;
+      continue;
+    }
+    out.push(c);
+  }
+  return out;
+}
+// 某颗球的互补碱基里，**本关池子里真的有**的那些。
+//   例：本关只有 A/U，那么 A 的互补只有 U 算数（T 不在池里，抽出来就是废弹）。
+function allowedComplements(sc, base) {
+  const c = COMPLEMENT[base];
+  if (!c) return [];
+  const pool = sc.bases || BASES;
+  return c.filter(function (x) { return pool.indexOf(x) >= 0; });
+}
+function inPool(sc, base) {
+  return (sc.bases || BASES).indexOf(base) >= 0;
+}
+
+// "A"  未配对   "A1" 已正确读出   "A2" 配错（灰球，之后会爆炸）
+function parseScriptEntry(tok) {
+  const d = tok.charAt(1);
+  const mark = (d === '1') ? 1 : ((d === '2') ? 2 : 0);
+  return { base: tok.charAt(0), mark: mark, paired: mark !== 0 };
+}
+
+// 珠袋可用池。★ 两种模式的"身份token"不同（DESIGN.md §57 改版）：
+//   匹配模式：token = 碱基，可用 = 场上未配对球的**互补碱基**
+//   七球模式：token = 元素，可用 = 能跟场上某颗未配对球**发生反应**的元素
+function usefulPool(sc) {
+  const out = [];
+  const balls = sc.chain.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (b.paired) continue;
+    const c = sc.mode === 'seven' ? beadElemsFor(b.elem, b.quickened) : allowedComplements(sc, b.base);
+    if (!c || !c.length) continue;
+    for (let k = 0; k < c.length; k++) if (out.indexOf(c[k]) < 0) out.push(c[k]);
+  }
+  return out;
+}
+
+// ★★ 加权池（DESIGN.md §54）：**不去重** —— 场上每有一颗粒子需要某个碱基，
+//   那个碱基就在池子里多出现一次。珠子袋按这个池子抽，就等于"按目标数量加权"。
+//
+//   ⚠ 原来用的是 usefulPool（**去重**）：只留"有哪些碱基有用"，丢掉了数量。
+//     后果实测很严重：场上 35.8 颗未配对球，手里那颗平均只能配上 **1.58** 颗
+//     （均匀的话该有 7~14 颗），于是 **85.7% 的帧根本没有可打的目标**，
+//     发射率只有 0.87 发/秒（冷却允许 6.3），清球 0.7 颗/秒 < 冒球 1.06 颗/秒
+//     -> 链子无限增长、必输。这不是速率问题，是**弹药与目标的匹配问题**。
+function weightedPool(sc) {
+  const out = [];
+  const balls = sc.chain.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (b.paired) continue;                       // 已占用的球不是合法目标
+    const c = sc.mode === 'seven' ? beadElemsFor(b.elem, b.quickened) : allowedComplements(sc, b.base);
+    if (!c || !c.length) continue;
+    for (let k = 0; k < c.length; k++) out.push(c[k]);   // ★ 不去重
+  }
+  return out;
+}
+
+// 轨道上的球心 = 骨架点 + 法线偏移（k 用于吸附飞行：0=贴合主轨，1=完全落到三消道）
+function beadPos(path, rail, wp, k) {
+  const s = k == null ? 1 : k;
+  const p = path.pointAt(wp);
+  const n = path.normalAt(wp);
+  return { x: p.x + n.x * rail.offset * s, y: p.y + n.y * rail.offset * s, z: p.z };
+}
+
+function assembleScene(level, view, seed) {
+  const mt = metrics(view.scale);
+  const spine = level.makeSpine(view, level);
+  const path = buildPath(spine, { samples: DESIGN.pathSamples, center: { x: view.cx, y: view.cy } });
+  assignLayers(path, level.layers ? level.layers(path, spine) : null);
+
+  const sign = level.railOrder === 'spawn-outer' ? 1 : -1;
+  const rails = {
+    spawn: { id: 'spawn', offset: sign * mt.d / 2, radius: mt.R },
+    eliminate: { id: 'eliminate', offset: -sign * mt.d / 2, radius: mt.r }
+  };
+  const railPolys = {
+    spawn: buildRail(path, rails.spawn.offset),
+    eliminate: buildRail(path, rails.eliminate.offset)
+  };
+  const runs = { spawn: layerRuns(path), eliminate: layerRuns(path) };
+
+  const zLevels = [];
+  for (let i = 0; i < runs.spawn.length; i++) {
+    const z = runs.spawn[i].z;
+    if (zLevels.indexOf(z) < 0) zLevels.push(z);
+  }
+  zLevels.sort(function (a, b) { return a - b; });
+
+  const issues = validateTrack(path, mt, { rails: [rails.spawn.offset, rails.eliminate.offset] });
+
+  const rng = makeRng(seed);
+  const chain = makeChain(mt, {});
+  const rb = makeRibosome(view.cx, view.cy, mt, rng);
+  const sc = {
+    level: level, spine: spine, metrics: mt, path: path, rails: rails,
+    railPolys: railPolys, runs: runs, zLevels: zLevels, issues: issues,
+    view: view, rng: rng, chain: chain, rb: rb,
+    projectiles: [], merges: [], events: [], spawnCount: 0, drained: 0,
+    winReason: null,                // 过关原因：'clear' / 'score' / 'match'（读出全部）
+    still: !!(level && level.still),  // §63 静止练习关：不前进、没有洞穴、不会输
+    // ★ §64 noClear：这一关**只教配对**，不消球也不爆炸。
+    //   起因（用户）：「第一关融入了三的倍数，不太对」——
+    //   ① 名义上教"看颜色发反色"，可玩家一配对就碰上了 3n 消，
+    //   两条规则同时压上来，第一关就不干净了。这里把它彻底摘掉。
+    noClear: !!(level && level.noClear),
+    goalMatchAll: level && level.goal === 'matchAll',   // 过关 = 把每一颗都读出来
+    shields: 0,                     // §57 结晶护盾：每片抵挡一次洞穴吞噬
+    cores: [],                      // §57 绽放的草原核
+    nextCoreId: 1,
+    lastReaction: null,             // 最近一次反应（给 HUD 用）
+    reactionFlash: 0,               // 反应横幅剩余秒数（纯渲染）
+    stopAdding: level.stopAdding === true,
+    mode: DESIGN.defaultMode,        // 'match' 或 'insert'
+    modeFlash: 0,                    // 按模式按钮后的高亮剩余时间
+    lives: DESIGN.startLives, score: 0, losing: false, gameOver: false, won: false,
+    runsInfo: [], lastClear: null,
+    // §57 元素反应计数：reactions 触发次数 / cores 草原核 / freezes 冻结 /
+    // reactionRemoves 反应造成的"移除 3 颗"次数（**不计进 explosions** ——
+    // 那是"错误配对爆炸"的计数，混在一起以后就分不清盘面是怎么变的了）
+    stats: { fired: 0, pairs: 0, mismatches: 0, merges: 0, cleared: 0, codons: 0, lost: 0,
+             explosions: 0, reactions: 0, cores: 0, freezes: 0, reactionRemoves: 0 },
+    beads: { spawn: [], eliminate: [] }
+  };
+
+  // 七球模式：球的身份token就是元素（玩家看到的是七色球，不是五种碱基）
+  // ★★ 新手关需要的四个关卡字段（DESIGN.md §60）：
+  //   bases    本关出现的碱基（缺省 = 全部五色）。教"反色配对"时只放 A/U，信息量才压得住。
+  //   script   固定开局序列（缺省 = 随机）。有些课必须摆出**确定的局面**才教得会 ——
+  //            比如 §28 的 1-间隔死球 11011，随机是碰不到的。
+  //   speed    珠串推进速度（缺省 = DESIGN.chainSpeed）。前两关要慢，玩家才有时间看。
+  //   startWp  开局把整链往前挪一段（缺省 0）。教"被洞穴吞掉"时，得让危险近在眼前。
+  sc.bases = (level.bases && level.bases.length) ? level.bases.slice() : BASES.slice();
+  if (level.script) {
+    const bs2 = parseScript(level.script);
+    const n = bs2.length;
+    // ⚠ 下标方向：prefillChain 的第 i 次调用对应 wp = i*T，而数组约定 balls[0] = 洞端。
+    //   所以 script[0] 要放到**最后**一次调用 —— 不这样写的话，关卡作者写的第一个球
+    //   会跑到出球口那一头去。
+    // ⚠ 必须取 .base —— token 是 "A1"（碱基+标记）这种两字符形式，
+    //   把整个 token 当碱基写进球里的话 COMPLEMENT['A1'] 是 undefined，
+    //   那关的球**一颗都配不上**（这种错会安静地毁掉整个关卡，不会报错）。
+    prefillChain(chain, n, function (i) { return parseScriptEntry(bs2[n - 1 - i]).base; });
+    for (let i = 0; i < chain.balls.length; i++) {
+      const spec = parseScriptEntry(bs2[i]);
+      const b = chain.balls[i];
+      if (spec.mark) {
+        const c = COMPLEMENT[b.base];
+        b.paired = true;
+        b.wrongMark = (spec.mark === 2);
+        b.pairBase = (c && c.length) ? c[0] : null;
+        b.dock = 1;
+      }
+    }
+  } else {
+    prefillChain(chain, level.prefill || 14, function () {
+      return sc.mode === 'seven' ? rng.pick(ELEMENTS) : rng.pick(sc.bases);
+    });
+  }
+  // ★ 用**占轨道全长的比例**而不是绝对弧长：轨道长度随视口/缩放变，
+  //   写死绝对值的话换个屏幕比例这关就不是"离洞口很近"了。
+  // ⚠ 语义是"让**队头**落在轨道的这个比例处"，不是"整链平移这么多" ——
+  //   第一版写成整链平移，§62 把轨道缩短之后 t5 的队头直接被推到了洞口外，
+  //   开局 2.3 秒连丢三条命（探针当场抓到）。
+  if (level.startWpFrac && chain.balls.length) {
+    const off = level.startWpFrac * path.length - chain.balls[0].wp;
+    if (off > 0) for (let i = 0; i < chain.balls.length; i++) chain.balls[i].wp += off;
+  }
+  // 静止练习关：把整链摆到轨道正中间（不然会挤在一头）
+  if (level.centerChain && chain.balls.length) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < chain.balls.length; i++) {
+      lo = Math.min(lo, chain.balls[i].wp); hi = Math.max(hi, chain.balls[i].wp);
+    }
+    const off = path.length / 2 - (lo + hi) / 2;
+    for (let i = 0; i < chain.balls.length; i++) chain.balls[i].wp += off;
+  }
+  // ★ §65 静止关速度归零（但绳模型继续跑，见 advanceScene 里的注释）
+  if (level.still) chain.targetSpeed = 0;
+  else if (level.speed != null) chain.targetSpeed = level.speed * mt.scale;
+  if (sc.mode === 'seven') for (let i = 0; i < chain.balls.length; i++) chain.balls[i].elem = chain.balls[i].base;
+  sc.spawnCount = chain.balls.length;
+  // 珠子袋挂上可用池，并按池重抽口中两颗（开局就该是能用的）
+  rb.poolFn = function () { return weightedPool(sc); };   // ★ 加权池（不去重）
+  // ★ 过期判定：这颗珠子还能不能找到目标（场上有没有与它互补的未配对球）
+  // "手里这颗还能不能打到东西"。七球模式下判据变成"能不能跟某颗球反应"。
+  rb.freshFn = function (tok) {
+    const bs = sc.chain.balls;
+    for (let i = 0; i < bs.length; i++) {
+      if (bs[i].paired) continue;
+      if (sc.mode === 'seven') { if (sevenReaction(bs[i].elem, tok, bs[i].quickened)) return true; }
+      else if (isComplement(tok, bs[i].base) && inPool(sc, tok)) return true;
+    }
+    return false;
+  };
+  // ★ 身份token 的取值域必须在**开局时就定好**。
+  //   早先只在模式切换（convertBoard）里设，于是"直接以七球模式开局"或
+  //   "在七球模式下 rebuild"时，手里装的是碱基、场上摆的是元素 —— 两边对不上，
+  //   HUD 上直接显示"装载 —/—"。smoke 的断言把这一条抓出来了。
+  rb.tokens = sc.mode === 'seven' ? ELEMENTS : (sc.bases || BASES);
+  // 按顺序抽：第二颗能看到第一颗，从而避开重复（见 ribosome.js drawBase）
+  rb.loaded = [];
+  rb.loaded.push(drawBase(rb));
+  rb.loaded.push(drawBase(rb));
+  syncBeads(sc);
+  return sc;
+}
+
+function syncBeads(sc) {
+  const spawn = [], eliminate = [];
+  const balls = sc.chain.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    const wpv = b.wp + (b.visOff || 0);          // 渲染位置 = 逻辑位置 + 视觉滞后
+    b.wpv = wpv;
+    const p = beadPos(sc.path, sc.rails.spawn, wpv);
+    b.x = p.x; b.y = p.y; b.z = p.z;
+    b.index = i;
+    // 被配对的大球描一圈「该发什么色」——就是它互补碱基的颜色，玩家不用背配对表。
+    // 错误配对（mark=2）改描警示红（DESIGN.md §32）。
+    // ★ 七球模式下球的**填充色**就是元素色、球面上的字就是元素字（火水冰雷草岩风）。
+    //   于是"该发什么"不再能靠反色直觉回答 —— 那件事改由瞄准提示负责（§57.11）。
+    if (sc.mode === 'seven') {
+      b.col = elemColor(b.elem);
+      b.ink = ELEM[b.elem] ? ELEM[b.elem].ink : '#101820';
+      b.label = elemGlyph(b.elem);
+      b.pairGlow = b.paired ? (b.wrongMark ? WRONG_GLOW : elemColor(b.pairBase)) : null;
+    } else {
+      b.col = null; b.ink = null; b.label = b.base;
+      b.pairGlow = b.paired ? (b.wrongMark ? WRONG_GLOW : complementColor(b.base)) : null;
+    }
+    spawn.push(b);
+    if (b.paired) {
+      const k = b.dock == null ? 1 : b.dock;      // 吸附飞行：0 -> 1
+      const q = beadPos(sc.path, sc.rails.eliminate, wpv, k);
+      const sevenB = sc.mode === 'seven';
+      eliminate.push({
+        // 匹配模式：小球用自己的碱基色 —— 调色板保证「互补 = 反色」，天然就是伙伴的反色。
+        // 七球模式：小球显示**打中它的那个元素**（b.pairBase 存的就是它）。
+        x: q.x, y: q.y, z: q.z, r: sc.metrics.r, base: b.pairBase,
+        col: sevenB ? elemColor(b.pairBase) : null,
+        ink: sevenB && ELEM[b.pairBase] ? ELEM[b.pairBase].ink : null,
+        label: sevenB ? elemGlyph(b.pairBase) : b.pairBase,
+        partner: b, paired: true, wrong: b.wrongMark === true, docked: k >= 1, index: i
+      });
+    }
+  }
+  sc.beads.spawn = spawn;
+  sc.beads.eliminate = eliminate;
+}
+
+function pushEvent(sc, ev) {
+  sc.events.push(ev);
+  if (sc.events.length > 64) sc.events.splice(0, sc.events.length - 64);
+}
+
+// 命中分流（DESIGN.md §4.4）：互补 -> 配对；不互补 -> 爆炸
+function resolveHit(sc, p, hit) {
+  const ball = sc.chain.balls[hit.index];
+  const ev = { type: '', index: hit.index, x: hit.x, y: hit.y, base: p.base, target: ball.base, mode: p.mode };
+  // ★★ 先看**模式**，再看化学 —— 顺序反了就是 bug。
+  //   ⚠ 曾经把 isComplement 放在最前面，于是「加球模式下打中一颗恰好互补的球」
+  //     会走配对分支、根本不并入 —— 玩家看到的就是「都切到加球了为什么还能匹配」。
+  //   规则：模式决定这一发干什么，化学只决定匹配模式下的结果。
+  if (sc.mode === 'seven') {
+    // ★★ 七球模式：**匹配本身就是元素反应**（用户原话「匹配相当于元素反应」）。
+    //   球上写着元素、珠子也是元素；两者之间有反应 = 匹配成功 -> 读出 + 触发反应；
+    //   没有反应 = 匹配失败 -> 走原有的"错误配对"（mark 2 -> 爆炸）。
+    //   所以玩家不是在找"唯一能配上的那颗"，而是在选"我要哪个反应"。
+    const r = sevenHit(sc, hit.index, p.base);
+    ev.type = r ? 'pair' : 'mismatch';
+    if (r) { ev.reaction = r.name; ev.mult = r.mult; }
+    pushEvent(sc, ev);
+    return ev;
+  }
+  if (p.mode === 'insert') {
+    // 加球模式：**无条件**并入主链。这就是原版的行为 —— 原版子弹必然并入
+    // （CurveMgr.cpp:1817 InsertInList，随后 1860 CheckSet 自动判消除）。
+    ev.type = 'insert';
+    const mg = startMerge(sc, ball, p.base, hit.x, hit.y);
+    mg.elem = p.elem || null;      // §57：并入的球也带上这发的元素
+    ev.willMerge = true;
+  } else if (isComplement(p.base, ball.base)) {
+    ball.paired = true;
+    ball.wrongMark = false;
+    ball.pairBase = p.base;
+    ball.dock = 0;
+    ev.type = 'pair';
+    sc.stats.pairs += 1;
+  } else {
+    // 错误配对（mark = 2，DESIGN.md §32）：走**同一条**配对路径 ——
+    // 占用 + 吸附飞行 + 三消道上出现绑定小球，只是状态值记成 2、外观上区分。
+    ball.paired = true;
+    ball.wrongMark = true;
+    ball.pairBase = p.base;
+    ball.dock = 0;
+    ev.type = 'mismatch';
+    sc.stats.mismatches += 1;
+  }
+  pushEvent(sc, ev);
+  return ev;
+}
+
+// U12 加球：弹丸并入出球道珠串。分两步——先钻进去（mergeTime），再正式入列。
+// 入列时只做 splice，槽位由绳模型下一帧自动顶开（见 chain.js insertBall 注释）。
+// 遮挡：并入过程中的 z **由它所在的 wp 决定**（beadPos 返回轨道层 z），
+// 所以在桥/自交处不会穿到上层轨道带外面去。
+// ★ 命中侧判定（DESIGN.md §49）：照原版 CurveMgr::CheckCollision:427
+//     flag = (子弹位置 − 球心) × 轨道法线 < 0   ->  mHitInFront
+//   原版可以插在命中球的**前侧或后侧**；我们最早只会插"出球端那一侧"，
+//   玩家没法控制插在哪边 —— 而"插在哪边"恰恰是解卡死区段的关键。
+function startMerge(sc, target, base, hitX, hitY) {
+  // 2D 叉积：(dx,dy) x (nx,ny) = dx*ny - dy*nx
+  const n = sc.path.normalAt(target.wp);
+  const dx = (hitX == null ? target.x : hitX) - target.x;
+  const dy = (hitY == null ? target.y : hitY) - target.y;
+  const inFront = (dx * n.y - dy * n.x) < 0;      // true = 插在靠洞（队头）那一侧
+  const m = {
+    targetId: target.id,
+    base: base,
+    inFront: inFront,
+    t: 0,
+    x: target.x, y: target.y, z: target.z,
+    r: sc.metrics.r
+  };
+  sc.merges.push(m);
+  sc.stats.merges += 1;
+  pushEvent(sc, { type: 'merge', base: base, index: target.index });
+  return m;
+}
+
+function findBallIndex(ch, id) {
+  for (let i = 0; i < ch.balls.length; i++) if (ch.balls[i].id === id) return i;
+  return -1;
+}
+
+function updateMerges(sc, dt) {
+  const mt = sc.metrics;
+  for (let i = sc.merges.length - 1; i >= 0; i--) {
+    const m = sc.merges[i];
+    const idx = findBallIndex(sc.chain, m.targetId);
+    if (idx < 0) { sc.merges.splice(i, 1); continue; }   // 目标被消掉了，并入作废
+    const target = sc.chain.balls[idx];
+    m.t += dt / DESIGN.mergeTime;
+    const k = Math.min(1, m.t);
+    const T = touchDist(sc.chain.mt, target, { r: mt.R });
+    // 靠洞那侧 = wp 增大方向；靠出球端那侧 = wp 减小方向
+    const wp = m.inFront ? (target.wp + T * k) : Math.max(0, target.wp - T * k);
+    const p = beadPos(sc.path, sc.rails.spawn, wp);
+    m.x = p.x; m.y = p.y; m.z = p.z;
+    m.r = mt.r + (mt.R - mt.r) * k;      // 从小球长成大球：护住"尺寸=哪条道"这条识别通道
+    if (m.t >= 1) {
+      // 我们的下标 0 = 洞端。插在靠洞那侧 -> 下标 idx；靠出球端那侧 -> idx+1
+      const at = m.inFront ? idx : idx + 1;
+      insertBall(sc.chain, at, {
+        wp: wp, base: m.base, r: mt.R, id: sc.chain.nextId++,
+        // ⚠ 这里**不能**再 sc.spawnCount++ —— spawnCount 是"出球道喂进来的球数"，
+        //   是关卡预算（原版 CurveDesc::mNumBalls）的计数器；玩家自己加进去的球
+        //   不该算进关卡预算里，否则切到加球模式打几发就把关卡的球数提前耗光了。
+        //   （球上的 n 字段没有任何地方读，早先只是顺手拿来当序号。）
+        n: null, paired: false, wrongMark: false, pairBase: null, dock: null,
+        elem: m.elem || null            // §57：并入进来的球带的是这一发的元素
+      });
+      if (DESIGN.insertPairs) tryInsertPair(sc, at);
+      sc.merges.splice(i, 1);
+    }
+  }
+}
+
+// 加球的正反馈（DESIGN.md §18）：插入后若与**任一邻居**互补，这颗新球自己获得绑定小球。
+// 规则表述统一为「绑定小球表示这颗主链球已被读出」：
+//   - 射击配对：被识别的 A 获得小球
+//   - 插入配对：新掺入的 B 获得小球
+// 小球上显示的字母 = 伙伴的碱基，颜色 = 持有者颜色的反色（与射击配对同构）。
+function tryInsertPair(sc, i) {
+  const balls = sc.chain.balls;
+  const b = balls[i];
+  if (!b || b.paired) return null;
+  const head = balls[i - 1];     // 队头侧（阅读方向）
+  const tail = balls[i + 1];
+  let mate = null;
+  if (head && isComplement(b.base, head.base)) mate = head;
+  else if (tail && isComplement(b.base, tail.base)) mate = tail;
+  if (!mate) return null;
+  b.paired = true;
+  b.wrongMark = false;
+  b.pairBase = mate.base;        // 小球显示"和我配对的那颗"的碱基
+  b.dock = 0;
+  pushEvent(sc, { type: 'insert-pair', base: b.base, with: mate.base });
+  return b;
+}
+
+function updateProjectiles(sc, dt) {
+  const list = sc.projectiles;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = list[i];
+    advanceProjectile(p, dt);
+    // 匹配模式：已占用的球是惰性的，弹丸直接穿过；加球模式：任何球都能当并入锚点
+    const hit = sweepHit(sc.chain.balls, p.px, p.py, p.x, p.y, p.r, p.mode !== 'insert');
+    if (hit) {
+      resolveHit(sc, p, hit);
+      list.splice(i, 1);
+      continue;
+    }
+    if (projectileExpired(p, sc.view, sc.metrics)) list.splice(i, 1);
+  }
+}
+
+// ★ 消除后退（DESIGN.md §42）：消掉 k 颗 -> 往出球端方向共退 k 个球位。
+//
+//   判定条件只有一个：**消除段是不是贴在洞端**（headEnd <= 0）。
+//     - 贴在洞端：洞端那一侧本来就是空的，没有球该退。而且删除本身已经把队头
+//       往后送了 k 个球位（实测贴洞端消除 k=3，队头当帧退 117.8 = 3×touchDist）
+//       —— 奖励已经兑现，退第二次就是**双重兑现**（总退 (2k+1) 个球位）。
+//     - 在链中间：删除不动队头，这时才需要后退兑现奖励 -> 标记洞端那颗（下标 0，
+//       即原版 mBallList.back()），拖动被消除留下的缝截断，出球端那截不动。
+//
+//   ⚠ 试过两版错的替代方案，都写在这里免得重蹈覆辙：
+//     v1 "一律标记洞端那颗"          -> 双重兑现；还把出球端的球拖出轨道回收（8000 帧 36~40 颗）
+//     v2 "加夹紧：任何球不许退过冒球口" -> **没用**。夹紧按"这一帧会被拖动的球"算余量，
+//        而消除留下的缝会截断拖动，被拖那段的末端根本到不了队尾，余量就很大 -> 几乎从不触发。
+//        **夹紧管的是「别退出去」，管不了「该不该退」**；该不该退只能由消除位置决定。
+function pushBack(sc, clearedCount, headEnd) {
+  const ch = sc.chain;
+  if (ch.balls.length === 0) return null;
+  if (headEnd == null || headEnd <= 0) return null;
+  const T = touchDist(ch.mt, { r: sc.metrics.R }, { r: sc.metrics.R });
+  return applyBackward(ch, 0, DESIGN.backFrames, clearedCount * T);
+}
+
+
+// ⚠ 这里曾经有一个 pairBackPush()：配对定型时给洞端侧那颗邻居打后退标记（照原版
+//   UpdateSuckingBalls 的 SetBackwardsCount(30)）。**已删除**，因为那个映射是错的：
+//     原版的「合并(suck)」= 两颗同色球**物理合并成一颗**，链真的缩短了 -> 后退是给这个动作做缓冲；
+//     我们的「配对」     = 给主链球**贴一个标记**，链的几何完全不变 -> 根本没有需要缓冲的事件。
+//   实测后果：配对一颗球，它会往出球端退 15 单位，而它前面的球不动 -> **链从配对点裂开一条缝**，
+//   同时 stopTime 每帧被重置 -> **整链冻结约 30 帧**。玩家看到的就是「只配对了一个，链却莫名其妙地动」。
+//   见 DESIGN.md §37。
+
+// ★ 过关（对应原版 Board::mHaveReachedTarget -> GameState_LevelUp）。
+//   两个条件任一满足即过关：分数达标 / 场上清空。见 DESIGN.md §52。
+function win(sc, reason) {
+  if (sc.won) return false;
+  sc.won = true;
+  sc.stopAdding = true;
+  // ★ 记下过关原因（DESIGN.md §55）：清空过关 / 分数过关在 HUD 上要能看出来。
+  //   早先只记事件不记状态，排查"到底是哪条路赢的"时踩过坑
+  //   （探针报告"6/6 清零路"，实际是分数路，过关时间恒定 16 秒）。
+  sc.winReason = reason;
+  pushEvent(sc, { type: 'win', score: sc.score, reason: reason });
+  return true;
+}
+
+// ★ 爆炸（DESIGN.md §30.3 / §32）：移除那颗 2 **加上左右各一颗**，共 3 颗。
+//   这正是「所有移除都是长度 3 的倍数」这条统一律的一个实例，所以不会破坏 mod-3 结构
+//   （这也是为什么不采纳"只移除那颗 2"——那样会得到非 3 的倍数）。
+//   注意：爆炸**不施加**后退冲量 —— 后退是 3n 消的奖励，爆炸是玩家主动付出的成本。
+function explodeAt(sc, i) {
+  // 邻域快照（i-2 .. i+2 的状态）—— 排查"为什么这里会爆"时非常有用
+  const bs = sc.chain.balls;
+  const pat = [
+    i - 2 >= 0 ? markFinal(bs[i - 2]) : -1,
+    i - 1 >= 0 ? markFinal(bs[i - 1]) : -1,
+    2,
+    i + 1 < bs.length ? markFinal(bs[i + 1]) : -1,
+    i + 2 < bs.length ? markFinal(bs[i + 2]) : -1
+  ];
+  const removed = removeRange(sc.chain, i - 1, i + 1);
+  sc.stats.explosions += 1;
+  pushEvent(sc, { type: 'explode', index: i, n: removed.length, pat: pat });
+  // ★ 爆炸也要走后退 —— 它移除 3 颗，和 3n 消在几何上完全一样。
+  //   按 §42 的规则：该不该退由**消除位置**决定（洞端靠删除兑现，链中间靠后退兑现）。
+  //   爆炸发生在链中间时删除不动队头 -> 就该退。早先漏了这一步，表现为
+  //   "爆炸后链子不夹紧、缝要 2.8 秒才补上（消除只要 0.9 秒）"。
+  //   headEnd = i - 1：接缝靠洞端那一侧的下界（和 eliminateRun 传 run.i0 同义）。
+  pushBack(sc, removed.length, i - 1);
+  return removed.length;
+}
+
+// ★ 结算循环（DESIGN.md §32）：**先爆炸，后 3n 消，循环到不动点**。
+//   一次只处理一个爆炸、从左到右扫 —— 结果因此是确定的：两个三元组重叠时
+//   （例 1 2 1 2 1），先爆的那个会把后面那颗一起清掉，不会产生歧义。
+function settle(sc) {
+  let total = 0;
+  // ★ §64 noClear：不消球、也不爆炸 —— 这一关只有"配对"这一件事。
+  //   注意爆炸也要一起关掉：不然玩家打错一颗，场上就莫名其妙炸了 3 颗，
+  //   而这一关根本没教过爆炸是什么。
+  if (!sc.noClear) {
+    for (let guard = 0; guard < 128; guard++) {
+      const ei = findExplosion(sc.chain);
+      if (ei >= 0) { total += explodeAt(sc, ei); continue; }
+      const cleared = clearImmediately(sc);
+      if (!cleared) break;
+      total += cleared;
+    }
+  }
+  sc.runsInfo = computeRuns(sc.chain);
+  // ★ 过关条件二：**场上清空**（DESIGN.md §52）。
+  //   正常玩法里链子会立刻从出球口补上，所以"空"只可能来自"你把整场清光了"
+  //   —— 比如场上只剩 3 颗 mark=2，一次爆炸全带走。这种时候必须结束，不能干等着。
+  //   （失败演出 updateLosing 也会清空链子，但那条走的是 sc.losing，不会到这里。）
+  // ★ §64 读出全部：这一关的目标就是"把每一颗都配对"，不做别的。
+  //   判据用 mark != 0（读对读错都算"打中过"）—— 第一关不该因为一次手滑就没法完成。
+  if (sc.goalMatchAll && !sc.losing && !sc.gameOver && !sc.won && sc.chain.balls.length > 0) {
+    let all = true;
+    for (let i = 0; i < sc.chain.balls.length; i++) {
+      if (markFinal(sc.chain.balls[i]) === 0) { all = false; break; }
+    }
+    if (all) win(sc, 'match');
+  }
+
+  // ★ 清空过关：**预算已发满** + 场上清空（DESIGN.md §53 / §55）。
+  //   链子清空本身不算——它每帧都在补；只有"发完了 + 清光了"才是真的清关。
+  // ★ 清空过关**只在有限球数的关卡里生效**（DESIGN.md §55）：无限出球时链子每帧
+  //   都在补，"场上为空"只是清球后的一瞬间，判赢会秒过关 —— 所以无尽关走分数过关。
+  //
+  // ★ 判"不足 3 颗"而不是"等于 0"（DESIGN.md §56）：这不是"差不多清了"，
+  //   而是**逻辑上已经不可能再消**。所有移除都是 3 的倍数（3n 消与爆炸各 3 颗），
+  //   场上剩 1~2 颗时不存在任何合法的 3n 段，玩家再怎么打也清不空。
+  //   实测（tools/probe-sloppy.mjs，30% 错误率的玩家）出现过"场上剩 2 颗、都已正确配对、
+  //   预算发完"的死局（残留标记 = 11）—— 按 === 0 判就永远卡在那里。
+  // ⚠ 必须显式挡 gameOver：命尽时 updateLosing 会把 losing 置回 false 并把链子吸空，
+  //   只判 !sc.losing 的话，一次 gameOver 会被误判成过关。
+  if (DESIGN.winOnClear && !sc.losing && !sc.gameOver && !sc.won &&
+      sc.chain.balls.length < 3) {
+    const bud = sc.level.ballBudget != null ? sc.level.ballBudget : DESIGN.ballBudget;
+    if (bud > 0 && sc.spawnCount >= bud) win(sc, 'clear');
+  }
+  return total;
+}
+
+// U9：立即消除 + 级联到不动点。
+// 从后往前删，避免下标位移；删完重算 run（空隙 λ=0 会自然阻断级联，等回缩闭合后下一帧继续）。
+function clearImmediately(sc) {
+  let total = 0;
+  let minPos = -1;          // 这一帧里"洞端那侧最小的一段"的位置（决定后退标记打在哪）
+  for (let guard = 0; guard < 64; guard++) {
+    const hits = clearableRuns(sc.chain);
+    if (!hits.length) break;
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const run = hits[i];
+      // ★ eliminateRun 返回的是**被移除的球数组**，不是数量 —— 直接加会把 total 变成字符串，
+      //   进而让 pushBack 的距离算出 NaN。这里必须取 .length。
+      total += eliminateRun(sc, run).length;
+      if (run.i0 > 0 && (minPos < 0 || run.i0 < minPos)) minPos = run.i0;
+    }
+  }
+  if (total) {
+    pushBack(sc, total, minPos);   // ★ 整帧只结算一次（见 pushBack 注释）
+    sc.runsInfo = computeRuns(sc.chain);
+  }
+  return total;
+}
+
+// U9：整段消除。
+// ★ 消除后**不回填、不瞬移**：出球道按原版逻辑（留下空隙，由绳模型的后段追上来补）。
+//   解围靠**原版式后退冲量**：整链沿轨道往冒球口方向渐进后退 k×touchDist（k = 消掉的颗数）。
+//   这样"消除 = 后退 k 个球位"从视觉上真的看得见，而不是瞬移。
+function eliminateRun(sc, run) {
+  const removed = removeRange(sc.chain, run.i0, run.i1);
+  sc.stats.cleared += removed.length;
+  sc.stats.codons += 1;
+  // ★ 增幅反应计分（DESIGN.md §57）：被标记了 amp 的球按倍率计分。
+  //   这正是原神「增幅反应基于技能伤害倍率」的映射 —— 剧变反应则去改盘面（explode/autoPair…）。
+  let gained = 0;
+  for (let k = 0; k < removed.length; k++) gained += DESIGN.scorePerBall * (removed[k].amp || 1);
+  sc.score += Math.round(gained);
+  // ★ 过关条件一：分数达标（对应原版 Board::mHaveReachedTarget -> GameState_LevelUp）
+  const sTgt = sc.level.scoreTarget != null ? sc.level.scoreTarget : DESIGN.scoreTarget;
+  if (!sc.won && sTgt > 0 && sc.score >= sTgt) win(sc, 'score');
+  sc.lastClear = { i0: run.i0, i1: run.i1, len: run.len };
+  pushEvent(sc, { type: 'clear', len: run.len, i0: run.i0, i1: run.i1 });
+  // 后退**不在这里**施加：同一帧可能连续消多段，若每段各施加一次，
+  // 先被标记的那颗球可能被后一次消除连带删掉（实测过：级联时标记直接消失）。
+  // 统一由 clearImmediately 在整帧结算完后施加一次。
+
+  sc.runsInfo = computeRuns(sc.chain);
+  return removed;
+}
+
+// A15 失败条件：与祖玛一致 —— 队头撞到降解洞穴，整条珠串被吸进去，扣 1 命。
+// 原版对应 Board::SetLosing()（mLives -= 1）+ CurveMgr::UpdateLosing()（所有球推向终点并逐颗删除）。
+function startLosing(sc) {
+  if (sc.losing || sc.gameOver) return sc.lives;
+  // ★ 结晶护盾（DESIGN.md §57）：晶片抵挡一次洞穴吞噬 —— 不扣命，把整链往回拽一截。
+  //   不拽的话队头还贴在洞口，下一帧立刻又触发，会一口气把护盾全吃光。
+  if (sc.shields > 0) {
+    sc.shields -= 1;
+    const bs = sc.chain.balls;
+    if (bs.length) {
+      const pull = 3 * touchDist(sc.chain.mt, bs[0], bs[Math.min(1, bs.length - 1)]);
+      for (let i = 0; i < bs.length; i++) bs[i].wp = Math.max(0, bs[i].wp - pull);
+      sc.chain.stopTime = DESIGN.backStopFrames;
+    }
+    pushEvent(sc, { type: 'shieldBlock', shields: sc.shields });
+    return sc.lives;
+  }
+  sc.losing = true;
+  sc.lives = Math.max(0, sc.lives - 1);
+  sc.stats.lost += 1;
+  pushEvent(sc, { type: 'losing', lives: sc.lives });
+  return sc.lives;
+}
+
+function updateLosing(sc, dt) {
+  const ch = sc.chain;
+  const end = sc.path.length;
+  const step = DESIGN.losingSpeed * sc.metrics.scale * dt;
+  const keep = [];
+  for (let i = 0; i < ch.balls.length; i++) {
+    const b = ch.balls[i];
+    b.wp += step;
+    if (b.wp < end) keep.push(b);
+  }
+  ch.balls = keep;
+  syncBeads(sc);
+  if (ch.balls.length > 0) return;
+
+  if (sc.lives <= 0) {
+    sc.losing = false;
+    sc.gameOver = true;
+    pushEvent(sc, { type: 'gameover', score: sc.score });
+    return;
+  }
+  restartBoard(sc);
+}
+
+// 扣命后重开本关（分数与剩余命保留）。对应原版失败演出结束后重铺轨道。
+function restartBoard(sc) {
+  const ch = sc.chain;
+  ch.balls = [];
+  ch.speed = 0;
+  if (sc.level.script) {
+    const bs2 = parseScript(sc.level.script);
+    const n = bs2.length;
+    prefillChain(ch, n, function (i) { return parseScriptEntry(bs2[n - 1 - i]).base; });
+    for (let i = 0; i < ch.balls.length; i++) {
+      const sp = parseScriptEntry(bs2[i]);
+      if (sp.mark) {
+        const c = COMPLEMENT[ch.balls[i].base];
+        ch.balls[i].paired = true;
+        ch.balls[i].wrongMark = (sp.mark === 2);
+        ch.balls[i].pairBase = (c && c.length) ? c[0] : null; ch.balls[i].dock = 1;
+      }
+    }
+  } else {
+    prefillChain(ch, sc.level.prefill || 14, function () {
+      return sc.mode === 'seven' ? sc.rng.pick(ELEMENTS) : sc.rng.pick(sc.bases || BASES);
+    });
+  }
+  if (sc.level.startWpFrac && ch.balls.length) {
+    const off = sc.level.startWpFrac * sc.path.length - ch.balls[0].wp;
+    if (off > 0) for (let i = 0; i < ch.balls.length; i++) ch.balls[i].wp += off;
+  }
+  if (sc.level.centerChain && ch.balls.length) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < ch.balls.length; i++) {
+      lo = Math.min(lo, ch.balls[i].wp); hi = Math.max(hi, ch.balls[i].wp);
+    }
+    const off = sc.path.length / 2 - (lo + hi) / 2;
+    for (let i = 0; i < ch.balls.length; i++) ch.balls[i].wp += off;
+  }
+  if (sc.mode === 'seven') for (let i = 0; i < ch.balls.length; i++) ch.balls[i].elem = ch.balls[i].base;
+  sc.spawnCount = ch.balls.length;
+  sc.runsInfo = [];
+  sc.projectiles.length = 0;
+  sc.merges.length = 0;
+  sc.cores.length = 0;           // §57：草原核挂在不存在的球上，直接清掉
+  sc.losing = false;
+  pushEvent(sc, { type: 'restart', lives: sc.lives });
+  syncBeads(sc);
+}
+
+function fireShot(sc) {
+  if (sc.losing || sc.gameOver || sc.won) return null;
+  const shot = fire(sc.rb);
+  if (!shot) return null;
+  const p = makeProjectile(shot, sc.metrics, sc.mode);
+  p.mode = sc.mode;
+  sc.projectiles.push(p);
+  sc.stats.fired += 1;
+  return p;
+}
+
+// 一帧推进：冒球 -> 绳子推进 -> 核糖体/弹丸 -> 吸附 -> 阅读框消除 -> 洞穴吞球 -> 同步渲染位置
+function advanceScene(sc, dt) {
+  if (sc.gameOver) return [];                            // 命尽：场景冻结
+  if (sc.won) return [];                                 // 过关：场景冻结（对应原版 GameState_LevelUp）
+  if (sc.losing) { updateLosing(sc, dt); return []; }    // 失败演出：珠子被吸进洞穴
+  const ch = sc.chain;
+
+  // 后退冲量期间不喂入 —— 对应原版 AdvanceBackwardBalls 末尾的 mStopTime = 20
+  const budget = sc.level.ballBudget != null ? sc.level.ballBudget : DESIGN.ballBudget;
+  const underBudget = budget <= 0 || sc.spawnCount < budget;      // 预算 0 = 无限出球
+  // ★ §63 静止练习关不出球：链子不动，队尾没腾出位置，出了也塞不进；
+  //   更关键的是"这一关的球就是场上这些"，教具要可控。
+  if (!sc.still && !sc.stopAdding && underBudget && ch.stopTime <= 0 && !hasBackward(ch)) {
+    // ★ 同碱基成段（原版 CurveDesc::mBallRepeat，见 DESIGN.md §54）：
+    //   以 baseRepeat 概率重复上一颗；否则**一定换成不同的**（原版 do-while 保证）。
+    const seven = sc.mode === 'seven';
+    const tail = ch.balls.length ? ch.balls[ch.balls.length - 1].base : null;
+    let base;
+    if (tail && sc.rng() < DESIGN.baseRepeat) {
+      base = tail;
+    } else {
+      const pool = seven ? ELEMENTS : (sc.bases || BASES);
+      base = sc.rng.pick(pool);
+      let guard = 0;
+      while (base === tail && guard++ < 16) base = sc.rng.pick(pool);
+    }
+    const ball = spawnBall(ch, base);
+    if (ball) {
+      ball.n = sc.spawnCount++;
+      // ★ 七球模式（§57 改版）：球的**身份**就是元素，不再有"碱基 + 附着"两层。
+      //   所以这里直接把 base 也写成同一个元素 —— 两条通道指向同一个值，
+      //   老代码里凡是用 base 的地方（字母、配色）都不会读到 undefined。
+      if (seven) ball.elem = base;
+    }
+  }
+  // ★ §65 静止练习关：**速度归零**，但绳模型照常跑。
+  //   ⚠ 不能整个跳过 advanceChain —— 那样"插入一颗把珠串顶开"就不工作了，
+  //     ④ 加球那一关会直接叠在一起（绳模型的推动就在 advanceChain 里）。
+  //   速度 0 的效果是：队尾不前进，但推动/缝合照旧 —— 这正是"静止"要的东西。
+  advanceChain(ch, dt, sc.path.length);
+
+  tickRibosome(sc.rb, dt);
+  updateProjectiles(sc, dt);
+  updateMerges(sc, dt);
+  tickElements(sc, dt);          // §57：草原核 / 燃烧 / 冻结计时
+
+  for (let i = 0; i < ch.balls.length; i++) {
+    const b = ch.balls[i];
+    if (b.dock == null || b.dock >= 1) continue;
+    b.dock = Math.min(1, b.dock + dt / DESIGN.dockTime);
+    if (b.dock >= 1 && b.dockDone !== true) b.dockDone = true;
+  }
+
+  if (sc.modeFlash > 0) sc.modeFlash = Math.max(0, sc.modeFlash - dt);
+  decayVisual(sc, dt);
+
+  // U9 + 2 态：**当帧结算到不动点**（先爆炸、后 3n 消）。
+  // 任何"长度是 3 的倍数且 >=3"的 run、以及任何"该爆没爆"的 2，都不允许存活到下一帧。
+  settle(sc);
+
+  // A15：队头撞上降解洞穴 -> 整条珠串被吸走 + 扣 1 命
+  // ★ §63 静止练习关没有洞穴 —— 也就没有失败。玩家可以慢慢想。
+  if (!sc.still && ch.balls.length > 0 && ch.balls[0].wp >= sc.path.length) startLosing(sc);
+
+  syncBeads(sc);
+  return [];
+}
+
+// ★ 切换轨道（模式）。加球模式打出去的是大球，所以口中珠子的尺寸也跟着变 —— 尺寸就是模式。
+// ==================== §57 元素反应 ====================
+//
+// 两层结构：
+//   序列层（碱基）：A/U/G/C 互补 -> 能不能配对（能不能消）—— 原有规则，完全不动
+//   能量层（元素）：附着在球上；配对成功时把珠子带的元素附着上去，并与左右邻居结算反应
+//
+// ★ 先手 / 后手：邻居身上已有的附着 = **先手**，本次打上去的 = **后手**。
+//   倍率由后手决定（原神：水打火 2.0、火打水 1.5），所以反应表里同一反应有两条。
+// ★ 所有反应造成的移除都是 **3 颗**（和爆炸同一条铁律），所以 mod-3 结构不会被破坏。
+
+// 能当"先手附着"的元素（风/岩不行）
+// ★★ 七球模式的匹配判定 —— **单一真源**：真正命中时用它，瞄准提示也用它。
+//    ⚠ 绝不能写两套：一旦分叉就会出现“提示说会蒸发、打下去却是冻结”，
+//      而玩家唯一的判断依据就是提示 —— 提示骗人比没有提示更糟。
+//    纯读，不改任何状态，所以可以每帧对每颗球调用。
+function findSevenReaction(sc, idx, beadElem) {
+  const ball = sc.chain.balls[idx];
+  if (!ball || !beadElem) return null;
+  // 碎冰优先：原神里“冻结 + 岩元素伤害”是独立的一条（此时冰+岩本来会查成结晶）
+  if (ball.frozen > 0 && beadElem === 'geo') return SHATTER;
+  return sevenReaction(ball.elem, beadElem, ball.quickened);
+}
+
+// 七球模式的"一颗球被打中"：**匹配 = 有反应**。
+//   有反应 -> 球被读出（mark 1）+ 当场触发那个反应
+//   没反应 -> 走原有的"错误配对"（mark 2）-> 后续爆炸
+// 单独抽出来是为了让单测能直接打一颗球，不必每次摆弹道（弹道那条路径另有覆盖），
+// 而且保证"测试打的"和"玩家打的"是同一条代码。
+function sevenHit(sc, idx, beadElem) {
+  const ball = sc.chain.balls[idx];
+  if (!ball) return null;
+  const r = findSevenReaction(sc, idx, beadElem);
+  ball.paired = true;
+  ball.wrongMark = !r;
+  ball.pairBase = beadElem;
+  ball.dock = 0;
+  if (!r) { sc.stats.mismatches += 1; return null; }
+  sc.stats.pairs += 1;
+  fireReaction(sc, idx, idx, r, beadElem, 0);
+  // ★ 草原核被雷/火打中 -> 超绽放 / 烈绽放。和上面那次反应**是两件事**，都会发生。
+  //   （原来这一步挂在两层模式的 applyElement 里，改成七球之后漏了 —— 测试当场抓到。）
+  detonateCoresFor(sc, ball.id, beadElem);
+  return r;
+}
+
+// 切换模式时把场上的球与手里的珠子搬到新模式的身份空间里。
+// ⚠ 不做这一步的话，从匹配模式切到七球模式后场上全是碱基字母、手里也是碱基 ——
+//   两边对不上，一发都打不中（元素模式时代就踩过“切过去全是裸球”这个坑）。
+function convertBoard(sc) {
+  const seven = sc.mode === 'seven';
+  const bs = sc.chain.balls;
+  for (let i = 0; i < bs.length; i++) {
+    const b = bs[i];
+    if (seven) {
+      if (ELEMENTS.indexOf(b.base) < 0) b.base = sc.rng.pick(ELEMENTS);
+      b.elem = b.base;
+    } else {
+      if (BASES.indexOf(b.elem) < 0) b.elem = null;   // 七球的身份不是碱基 -> 清掉
+      if (ELEMENTS.indexOf(b.base) >= 0) b.base = sc.rng.pick(BASES);
+    }
+  }
+  // 手里两颗也要换到新的身份空间，否则第一发必然是废弹
+  sc.rb.tokens = seven ? ELEMENTS : BASES;
+  for (let k = 0; k < sc.rb.loaded.length; k++) sc.rb.loaded[k] = sc.rng.pick(sc.rb.tokens);
+  if (sc.rb.loadedElem) {
+    for (let k = 0; k < sc.rb.loadedElem.length; k++) sc.rb.loadedElem[k] = sc.rng.pick(ELEMENTS);
+  }
+  syncBeads(sc);
+}
+
+function fireReaction(sc, idx, auraIdx, r, trigger, depth) {
+  const balls = sc.chain.balls;
+  const ball = balls[idx];
+  const ev = {
+    type: 'reaction', id: r.id, name: r.name, mult: r.mult, effect: r.effect,
+    index: idx, auraIndex: auraIdx, aura: balls[auraIdx] ? balls[auraIdx].elem : null,
+    trigger: trigger, score: DESIGN.elemScorePerReaction
+  };
+  sc.stats.reactions += 1;
+  switch (r.effect) {
+    case 'amp':
+      // 增幅：这颗球被消掉时按倍率计分（原神：增幅基于技能伤害倍率）
+      ball.amp = Math.max(ball.amp || 1, r.mult);
+      break;
+    case 'quicken':
+      // 原激化：施加激元素附着（原神原文），之后再被雷/草触发就是超激化/蔓激化
+      // ⚠ 七球模式下球的 elem **就是它的身份**，改掉等于把球换了种 —— 只能打标记。
+      if (sc.mode !== 'seven') ball.elem = QUICK;
+      ball.quickened = true;
+      break;
+    case 'explode':
+      ev.removed = removeAround(sc, idx);
+      break;
+    case 'autoPair':
+      ev.pairedCount = autoPairNear(sc, idx, DESIGN.elemAutoPairCount);
+      break;
+    case 'chain':
+      ev.pairedCount = electroChargedBurst(sc);
+      break;
+    case 'freeze':
+      ev.frozen = freezeSegment(sc, idx, DESIGN.elemFreezeTime);
+      break;
+    case 'swirl':
+      // ★ 被扩散出去的是**触发它的那个元素**（原神：风触及火水雷冰，被带走的是火水雷冰）。
+      //   两层模式里 auraIdx 是邻居，它身上那个元素就是要扩散的元素；
+      //   但七球模式里 auraIdx === idx，而那颗球的元素是**风本身** ——
+      //   直接读 balls[auraIdx].elem 会把"风"当成被扩散物，于是扩散什么都不做
+      //   （回归测试当场抓到：反应次数只有 1，邻居的蒸发没发生）。
+      ev.spread = swirlFrom(sc, auraIdx,
+        sc.mode === 'seven' ? trigger : (balls[auraIdx] ? balls[auraIdx].elem : null),
+        idx, depth + 1);
+      break;
+    case 'shield':
+      sc.shields = Math.min(DESIGN.elemShieldMax, sc.shields + 1);
+      ev.shields = sc.shields;
+      break;
+    case 'core':
+      ev.coreId = spawnCore(sc, idx);
+      break;
+    case 'burn':
+      ball.burn = DESIGN.elemBurnTime;
+      ball.burnAcc = 0;
+      break;
+  }
+  sc.score += DESIGN.elemScorePerReaction;
+  sc.lastReaction = ev;
+  sc.reactionFlash = DESIGN.reactionFlashTime;
+  pushEvent(sc, ev);
+  return ev;
+}
+
+// 就地移除 3 颗（以 idx 为中心；贴边时整体挪进来，保证永远是 3 颗）
+function removeAround(sc, idx) {
+  const bs = sc.chain.balls;
+  const n = bs.length;
+  if (n === 0) return 0;
+  let lo = idx - 1, hi = idx + 1;
+  if (lo < 0) { lo = 0; hi = Math.min(n - 1, 2); }
+  if (hi > n - 1) { hi = n - 1; lo = Math.max(0, n - 3); }
+  const removed = removeRange(sc.chain, lo, hi);
+  sc.stats.reactionRemoves += 1;
+  pushBack(sc, removed.length, lo);
+  return removed.length;
+}
+
+// 自动"读出"一颗球（= 正确配对，标记 1）。超导/感电/燃烧都用它 ——
+// 它们帮玩家**凑够 3n 段**，但一颗都不移除，所以不碰 mod-3 结构。
+function autoPairBall(sc, i) {
+  const b = sc.chain.balls[i];
+  if (!b || b.paired) return false;
+  const c = COMPLEMENT[b.base];
+  b.paired = true;
+  b.wrongMark = false;
+  b.pairBase = (c && c.length) ? c[0] : null;
+  b.dock = 1;
+  return true;
+}
+
+function autoPairNear(sc, idx, count) {
+  const n = sc.chain.balls.length;
+  const order = [];
+  for (let d = 1; d < n; d++) { order.push(idx - d, idx + d); }
+  let done = 0;
+  for (let k = 0; k < order.length && done < count; k++) {
+    const j = order[k];
+    if (j < 0 || j >= n) continue;
+    if (autoPairBall(sc, j)) done += 1;
+  }
+  return done;
+}
+
+// 感电传导：原神原文「如果周围有附着水元素的敌人，会间歇性地向周围放电」
+function electroChargedBurst(sc) {
+  const bs = sc.chain.balls;
+  let done = 0;
+  for (let i = 0; i < bs.length; i++) {
+    if (bs[i].elem !== 'hydro') continue;
+    for (let s = -1; s <= 1; s += 2) {
+      const j = i + s;
+      if (j < 0 || j >= bs.length) continue;
+      if (autoPairBall(sc, j)) { done += 1; break; }
+    }
+  }
+  return done;
+}
+
+function freezeSegment(sc, idx, secs) {
+  const bs = sc.chain.balls;
+  sc.chain.freezeTime = Math.max(sc.chain.freezeTime || 0, secs);
+  let n = 0;
+  for (let j = idx - 1; j <= idx + 1; j++) {
+    if (j >= 0 && j < bs.length) { bs[j].frozen = secs; n += 1; }
+  }
+  sc.stats.freezes += 1;
+  return n;
+}
+
+// 扩散：把元素往两侧传播（原神原文「产生附着，或进一步引发其他反应」）
+function swirlFrom(sc, srcIdx, elem, skipIdx, depth) {
+  if (!elem || depth > DESIGN.elemReactionDepth) return 0;
+  const bs = sc.chain.balls;
+  let n = 0;
+  for (let d = -DESIGN.elemSwirlRange; d <= DESIGN.elemSwirlRange; d++) {
+    if (d === 0) continue;
+    const j = srcIdx + d;
+    if (j < 0 || j >= bs.length) continue;
+    if (j === skipIdx) continue;
+    const b = bs[j];
+    if (sc.mode === 'seven') {
+      // ★ 七球模式：邻居的身份也是元素，**不能**覆盖它。
+      //   原神原文是"扩散会造成对应元素伤害、产生附着，或**进一步引发其他反应**"——
+      //   这里就取后半句：拿被扩散的那个元素去和邻居的身份结算反应。
+      // （起风的那颗球本身已经在上面被 skipIdx 跳过了）
+      const r7 = sevenReaction(b.elem, elem, b.quickened);
+      // ★★ 连锁里**不允许再出扩散**。
+      //   原神里扩散是"风触及火水雷冰"，而被扩散出去的是火/水/雷/冰本身 —— 不是风，
+      //   所以一条扩散链上不可能再套一次扩散。不挡的话会滚雪球：
+      //   深度 4 × 每层两个邻居 -> 实测一关 **217 次反应**、无尽关 2.7 秒就通关。
+      //   （这个坑是自动对局探针量出来的，不是看代码看出来的。）
+      if (r7 && r7.id !== 'swirl') { fireReaction(sc, j, srcIdx, r7, elem, depth); n += 1; }
+    } else if (!b.elem) { b.elem = elem; n += 1; }
+    else if (b.elem !== elem && b.elem !== QUICK) {
+      const r = reactionFor(b.elem, elem);
+      if (r) { fireReaction(sc, j, srcIdx, r, elem, depth); n += 1; }
+    }
+  }
+  return n;
+}
+
+// 绽放：生成草原核（原神：至多 5 个、存在 6 秒，超出的立即爆炸）
+function spawnCore(sc, idx) {
+  const b = sc.chain.balls[idx];
+  const core = {
+    id: sc.nextCoreId++, ballId: b ? b.id : null,
+    x: b ? b.x : 0, y: b ? b.y : 0, z: b ? b.z : 0,
+    t: DESIGN.elemCoreLife
+  };
+  sc.cores.push(core);
+  while (sc.cores.length > DESIGN.elemCoreMax) detonateCore(sc, sc.cores[0]);
+  return core.id;
+}
+
+function detonateCore(sc, core) {
+  const i = sc.cores.indexOf(core);
+  if (i < 0) return 0;
+  sc.cores.splice(i, 1);
+  // 找离核心最近的一颗球，就地移除 3 颗
+  const best = nearestIndexTo(sc, core.x, core.y);
+  const removed = best >= 0 ? removeAround(sc, best) : 0;
+  sc.stats.cores += 1;
+  pushEvent(sc, { type: 'core', x: core.x, y: core.y, removed: removed });
+  return removed;
+}
+
+// 离某个点最近的那颗球（核失去宿主时用来定位）
+function nearestIndexTo(sc, x, y) {
+  const bs = sc.chain.balls;
+  let best = -1, bd = Infinity;
+  for (let k = 0; k < bs.length; k++) {
+    const dx = bs[k].x - x, dy = bs[k].y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bd) { bd = d2; best = k; }
+  }
+  return best;
+}
+
+// 草原核遇到雷/火 -> 超绽放 / 烈绽放（原神：倍率都是 3）。
+// ⚠ 按**球的 id** 找宿主、不按下标：引爆它的那次反应（比如超载）可能已经把球带走了，
+//   这时候按下标去读会读到完全不相干的球。
+function detonateCoresFor(sc, ballId, trigger) {
+  if (trigger !== 'electro' && trigger !== 'pyro') return 0;
+  let n = 0;
+  for (let k = sc.cores.length - 1; k >= 0; k--) {
+    const c = sc.cores[k];
+    if (c.ballId !== ballId) continue;
+    sc.cores.splice(k, 1);
+    const bi = findBallIndex(sc.chain, ballId);
+    const at = bi >= 0 ? bi : nearestIndexTo(sc, c.x, c.y);
+    const ev = {
+      type: 'reaction', id: trigger === 'electro' ? 'hyperbloom' : 'burgeon',
+      name: trigger === 'electro' ? '超绽放' : '烈绽放',
+      mult: 3, effect: 'explode', index: at, aura: 'dendro', trigger: trigger,
+      score: DESIGN.elemScorePerReaction
+    };
+    ev.removed = at >= 0 ? removeAround(sc, at) : 0;
+    sc.stats.reactions += 1;
+    sc.stats.cores += 1;
+    sc.score += DESIGN.elemScorePerReaction;
+    sc.lastReaction = ev;
+    sc.reactionFlash = DESIGN.reactionFlashTime;
+    pushEvent(sc, ev);
+    n += 1;
+  }
+  return n;
+}
+
+// 每帧推进：草原核、燃烧、冻结计时
+function tickElements(sc, dt) {
+  if (sc.reactionFlash > 0) sc.reactionFlash = Math.max(0, sc.reactionFlash - dt);
+  // 草原核：跟着它的球走，到期自爆
+  for (let k = sc.cores.length - 1; k >= 0; k--) {
+    const c = sc.cores[k];
+    const bi = c.ballId == null ? -1 : findBallIndex(sc.chain, c.ballId);
+    if (bi >= 0) { const b = sc.chain.balls[bi]; c.x = b.x; c.y = b.y; c.z = b.z; }
+    c.t -= dt;
+    if (c.t <= 0) detonateCore(sc, c);
+  }
+  // 燃烧：原神 0.25 秒跳一次 —— 这里每次把相邻一颗未配对的球"烧"成已读
+  const bs = sc.chain.balls;
+  for (let i = 0; i < bs.length; i++) {
+    const b = bs[i];
+    if (b.burn > 0) {
+      b.burn -= dt;
+      b.burnAcc = (b.burnAcc || 0) + dt;
+      while (b.burnAcc >= DESIGN.elemBurnTick) {
+        b.burnAcc -= DESIGN.elemBurnTick;
+        for (let s = -1; s <= 1; s += 2) {
+          const j = i + s;
+          if (j >= 0 && j < bs.length && autoPairBall(sc, j)) break;
+        }
+      }
+      if (b.burn <= 0) { b.burn = 0; b.burnAcc = 0; }
+    }
+    if (b.frozen > 0) b.frozen = Math.max(0, b.frozen - dt);
+  }
+}
+
+function setMode(sc, mode) {
+  const m = (mode === 'insert') ? 'insert' : ((mode === 'seven') ? 'seven' : 'match');
+  const wasSeven = sc.mode === 'seven';
+  sc.mode = m;
+  sc.modeFlash = DESIGN.modeFlashTime;   // 按钮闪一下 = 「点到了」的确认
+  // ★ 身份空间变了（匹配 <-> 七球）就把场上的球和手里的珠子一起搬过去。
+  //   不搬的话切过去两边 token 对不上，一发都打不中（元素模式时代踩过这个坑）。
+  if (wasSeven !== (m === 'seven')) convertBoard(sc);
+  return sc.mode;
+}
+
+// 三种模式循环：匹配 -> 加球 -> 七球 -> 匹配
+function toggleMode(sc) {
+  const order = ['match', 'insert', 'seven'];
+  const i = order.indexOf(sc.mode);
+  return setMode(sc, order[(i + 1) % order.length]);
+}
+
+function drainEvents(sc) {
+  const out = sc.events;
+  sc.events = [];
+  return out;
+}
+
+// 视觉滞后量的指数衰减（时间常数 = retreatTime/3，约 retreatTime 后收敛到 5% 以内）。
+// 纯渲染：所有判定都只看 wp。
+function decayVisual(sc, dt) {
+  const k = Math.exp(-dt / (DESIGN.retreatTime / 3));
+  const balls = sc.chain.balls;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (b.visOff) {
+      b.visOff *= k;
+      if (Math.abs(b.visOff) < 0.05) b.visOff = 0;
+    }
+  }
+}
+
+function sceneInfo(sc) {
+  const ch = sc.chain;
+  return {
+    balls: ch.balls.length,
+    headWp: ch.balls.length ? ch.balls[0].wp : 0,
+    tailWp: ch.balls.length ? ch.balls[ch.balls.length - 1].wp : 0,
+    speed: ch.speed,
+    curveLength: sc.path.length,
+    progress: ch.balls.length ? ch.balls[0].wp / sc.path.length : 0,
+    paired: sc.beads.eliminate.length,
+    runs: sc.runsInfo.map(function (r) { return r.len; }),
+    shots: sc.projectiles.length,
+    merges: sc.merges.length,
+    score: sc.score,
+    lives: sc.lives,
+    losing: sc.losing,
+    gameOver: sc.gameOver,
+    won: sc.won,
+    // ⚠ 用 != null 而不是 ||：有限球数关把 scoreTarget 显式设成 Infinity 表示
+    //   "不靠分数过关"，用 || 虽然也能过（Infinity 是真值），但 0 会被吞掉。
+    scoreTarget: sc.level.scoreTarget != null ? sc.level.scoreTarget : DESIGN.scoreTarget,
+    winReason: sc.winReason,
+    spawned: sc.spawnCount,
+    budget: sc.level.ballBudget != null ? sc.level.ballBudget : DESIGN.ballBudget,
+    endless: (sc.level.ballBudget != null ? sc.level.ballBudget : DESIGN.ballBudget) <= 0,
+    remaining: (function () {
+      const b = sc.level.ballBudget != null ? sc.level.ballBudget : DESIGN.ballBudget;
+      return b > 0 ? Math.max(0, b - sc.spawnCount) : 0;
+    })(),
+    onField: sc.chain.balls.length,
+    stats: sc.stats,
+    mode: sc.mode,
+    loaded: sc.rb.loaded.slice(),          // 手里两颗的身份token（碱基或元素）
+    // ---- §57 元素反应 ----
+    shields: sc.shields,
+    cores: sc.cores.length,
+    reactions: sc.stats.reactions,
+    lastReaction: sc.lastReaction
+  };
+}
+
+
+// ===== src/render.js =====
+// 渲染层：只读游戏状态，不改状态。
+// 分层绘制（DESIGN.md §3.3）：按 z 升序，每层先画轨道带（不透明），再画该层珠子。
+
+
+
+
+
+
+
+function hexA(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+function strokePoly(ctx, poly, i0, i1, width, style, dx, dy) {
+  if (i1 <= i0) return;
+  ctx.beginPath();
+  ctx.moveTo(poly[i0].x + (dx || 0), poly[i0].y + (dy || 0));
+  for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(poly[i].x + (dx || 0), poly[i].y + (dy || 0));
+  ctx.lineWidth = width;
+  ctx.strokeStyle = style;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+function drawBackground(ctx, G) {
+  const v = G.view;
+  const g = ctx.createRadialGradient(v.cx, v.cy, 0, v.cx, v.cy, Math.max(v.w, v.h) * 0.72);
+  g.addColorStop(0, '#0d1524');
+  g.addColorStop(1, '#05070c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, v.w, v.h);
+
+  // 细网格（实验室感，弱对比）
+  const step = 48 * G.metrics.scale;
+  ctx.strokeStyle = 'rgba(90,130,190,0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = v.cx % step; x < v.w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, v.h); }
+  for (let y = v.cy % step; y < v.h; y += step) { ctx.moveTo(0, y); ctx.lineTo(v.w, y); }
+  ctx.stroke();
+}
+
+function drawTrackLayer(ctx, G, z) {
+  const mt = G.metrics;
+  const bedW = 2 * (mt.d / 2 + mt.R) + 10 * mt.scale;
+  const runs = G.runs.spawn;
+  const spinePoly = G.path.pts;
+
+  // 1) 床（不透明，负责遮挡下层）
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    if (run.z !== z) continue;
+    if (z > 0) strokePoly(ctx, spinePoly, run.i0, run.i1, bedW, 'rgba(0,0,0,0.6)', 3 * mt.scale, 4 * mt.scale);
+    strokePoly(ctx, spinePoly, run.i0, run.i1, bedW, z > 0 ? '#182338' : '#101827');
+  }
+  // 2) 两条轨道线
+  const ids = ['eliminate', 'spawn'];
+  for (let k = 0; k < ids.length; k++) {
+    const id = ids[k];
+    const rail = G.rails[id];
+    const poly = G.railPolys[id];
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      if (run.z !== z) continue;
+      strokePoly(ctx, poly, run.i0, run.i1, 2 * rail.radius + 4 * mt.scale,
+        id === 'spawn' ? '#1d2b40' : '#182435');
+      strokePoly(ctx, poly, run.i0, run.i1, 1.0 * mt.scale,
+        id === 'spawn' ? 'rgba(96,142,205,0.50)' : 'rgba(80,180,150,0.40)');
+    }
+  }
+}
+
+// label = 球面上的字（匹配模式是碱基字母，七球模式是元素汉字：火水冰雷草岩风）
+function drawBead(ctx, x, y, r, label, glow, color, ink, glowColor, frozen) {
+  const fill = color || BASE_COLOR[label] || '#8899aa';
+  const textInk = ink || BASE_INK[label] || '#101820';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.42, r * 0.1, x, y, r * 1.05);
+  g.addColorStop(0, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+  g.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.stroke();
+
+  if (glow) {
+    ctx.beginPath();
+    ctx.arc(x, y, r + 3, 0, TAU);
+    ctx.strokeStyle = glowColor || 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = Math.max(1.5, r * 0.18);
+    ctx.stroke();
+  }
+
+  // ★ §57 冻结：蒙一层冰 + 白边（原神里被冻住 = 不能行动）
+  if (frozen > 0) {
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.97, 0, TAU);
+    ctx.fillStyle = 'rgba(168,236,255,0.42)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.06, 0, TAU);
+    ctx.strokeStyle = 'rgba(228,250,255,0.92)';
+    ctx.lineWidth = Math.max(1.5, r * 0.14);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = textInk;
+  ctx.font = 'bold ' + Math.round(r * 1.05) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y + r * 0.06);
+}
+
+// 配对连线：一条粗棒，**画在球之上**，横跨两颗球的中心之间。
+// 之前画的是两条细线、且在球之前绘制 —— 两轨之间只有 2px 缝，等于看不见。
+// 现在：球距拉开（railClearance 9.0）+ 画在球上层 + 粗度随缩放 -> 一眼可见。
+function drawPairLink(ctx, a, b, color, scale, wrong) {
+  const s0 = scale || 1;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const px = -dy / len, py = dx / len;          // 连线的法向
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(3, 3.4 * s0);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (!wrong) {
+    // 正确配对：一条直棒（DESIGN.md §24）。本来想画两条平行线当氢键，
+    // 但手机 scale 0.82 下太细，改成一条粗的更好认。
+    ctx.moveTo(a.x + dx * 0.26, a.y + dy * 0.26);
+    ctx.lineTo(a.x + dx * 0.74, a.y + dy * 0.74);
+  } else {
+    // ★ 错误配对（mark=2）：画成**断掉的锯齿** —— 主题上就是"氢键接不上"（DESIGN.md §32）
+    const amp = Math.max(2.5, 3.4 * s0);
+    ctx.moveTo(a.x + dx * 0.26, a.y + dy * 0.26);
+    ctx.lineTo(a.x + dx * 0.42 + px * amp, a.y + dy * 0.42 + py * amp);
+    ctx.lineTo(a.x + dx * 0.58 - px * amp, a.y + dy * 0.58 - py * amp);
+    ctx.lineTo(a.x + dx * 0.74, a.y + dy * 0.74);
+  }
+  ctx.stroke();
+}
+
+// 连线单独一遍，在所有珠子之上
+function drawPairLinks(ctx, G, z) {
+  const list = G.beads.eliminate;
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
+    if (b.z !== z || !b.partner) continue;
+    const pairCol = b.wrong ? WRONG_COLOR : BASE_COLOR[b.base];
+    drawPairLink(ctx, b, b.partner, pairCol, G.metrics.scale, b.wrong === true);
+  }
+}
+
+function drawBeadLayer(ctx, G, z) {
+  const ids = ['eliminate', 'spawn'];
+  for (let k = 0; k < ids.length; k++) {
+    const id = ids[k];
+    const list = G.beads[id];
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      if (b.z !== z) continue;
+      drawBead(ctx, b.x, b.y, b.r, b.label || b.base, b.paired === true,
+        b.wrong ? WRONG_COLOR : (b.col || null), b.wrong ? WRONG_INK : (b.ink || null),
+        b.pairGlow, b.frozen);
+    }
+  }
+}
+
+// U12：并入过程中的球。画在**同层链珠之上**（正在挤进去，得看得见），
+// 但 z 仍由 wp 决定，所以跨层（桥）时顺序依然正确。
+function drawMergeLayer(ctx, G, z) {
+  const sc = G.sc;
+  if (!sc || !sc.merges) return;
+  for (let i = 0; i < sc.merges.length; i++) {
+    const m = sc.merges[i];
+    if (m.z !== z) continue;
+    drawBead(ctx, m.x, m.y, m.r, m.base, true, null, null, null, 0);
+  }
+}
+
+function drawCave(ctx, G) {
+  const end = G.path.pointAt(G.path.length);
+  const mt = G.metrics;
+  const R = mt.R * 1.5;
+  const g = ctx.createRadialGradient(end.x, end.y, R * 0.15, end.x, end.y, R * 1.3);
+  g.addColorStop(0, '#000000');
+  g.addColorStop(0.55, '#1a0a12');
+  g.addColorStop(1, 'rgba(255,70,90,0.28)');
+  ctx.beginPath();
+  ctx.arc(end.x, end.y, R, 0, TAU);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,90,110,0.75)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,150,160,0.9)';
+  ctx.font = '600 ' + Math.round(11 * mt.scale) + 'px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('降解洞穴', end.x, end.y + R + 14 * mt.scale);
+}
+
+function drawRibosome(ctx, G) {
+  const sc = G.sc;
+  const mt = G.metrics;
+  if (!sc || !sc.rb) return;
+  const rb = sc.rb;
+  const R = rb.r;
+
+  // 瞄准线
+  ctx.beginPath();
+  ctx.moveTo(rb.x, rb.y);
+  ctx.lineTo(rb.x + Math.cos(rb.aim) * (R + 110 * mt.scale), rb.y + Math.sin(rb.aim) * (R + 110 * mt.scale));
+  ctx.strokeStyle = 'rgba(150,200,255,0.30)';
+  ctx.lineWidth = Math.max(1, 1.4 * mt.scale);
+  ctx.stroke();
+
+  // 本体
+  ctx.beginPath();
+  ctx.arc(rb.x, rb.y, R, 0, TAU);
+  ctx.fillStyle = '#22303f';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(150,200,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 双珠待命：炮口那颗 + 身后那颗
+  // ★ 尺寸就是模式（DESIGN.md §46）：匹配模式口中是小球、加球模式是大球。
+  //   这样玩家不用看按钮也知道这一发是干什么的。
+  const bR = (sc.mode === 'insert') ? mt.R : mt.r;
+  // 七球模式下手里装的是元素 -> 用元素的配色与汉字画；匹配模式仍是碱基
+  const sv = sc.mode === 'seven';
+  const tk = function (k) { return sv ? elemColor(rb.loaded[k]) : null; };
+  const ik = function (k) { return sv && ELEM[rb.loaded[k]] ? ELEM[rb.loaded[k]].ink : null; };
+  const lb = function (k) { return sv ? elemGlyph(rb.loaded[k]) : rb.loaded[k]; };
+  drawBead(ctx, rb.x - Math.cos(rb.aim) * R * 0.7, rb.y - Math.sin(rb.aim) * R * 0.7,
+    bR * 0.8, lb(1), false, tk(1), ik(1), null, 0);
+  drawBead(ctx, rb.x + Math.cos(rb.aim) * R * 0.8, rb.y + Math.sin(rb.aim) * R * 0.8,
+    bR * 1.0, lb(0), true, tk(0), ik(0), null, 0);
+}
+
+// §57 绽放的草原核：一颗会脉动的草色球，外圈画剩余时间。
+// 原神里草原核 6 秒后爆炸、最多 5 个 —— 这里把"还剩多久"直接画出来，
+// 因为玩家要据此决定"先躲开还是先引爆"。
+// ★ §57.11 对策①：瞄准提示。
+//   元素层没有"看颜色就知道发哪颗"这种直觉通道，玩家得背七元素反应表 —— 这是本模式
+//   最大的可用性风险。对策就是**把已经算好的结果直接说出来**：只在"这一发真的打得中"
+//   的球上标（碱基互补 + 未配对 + 真会触发反应），别的一概不标，免得糊成一片。
+//   ⚠ 判定必须走 scene 的 findSevenReaction —— 提示和实际结算共用一份逻辑，提示才不会骗人。
+function drawReactionHints(ctx, G) {
+  const sc = G.sc;
+  if (!sc || sc.mode !== 'seven' || !DESIGN.elemHints) return;
+  const rb = sc.rb;
+  if (!rb || !rb.loaded) return;
+  const bead = rb.loaded[0];
+  if (!bead) return;
+  const bs = sc.chain.balls;
+  const mt = G.metrics;
+  const maxN = DESIGN.hintMaxCount || 4;
+  let shown = 0;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  for (let i = 0; i < bs.length && shown < maxN; i++) {
+    const b = bs[i];
+    if (b.paired) continue;                       // 已占用的球打不中
+    const r = findSevenReaction(sc, i, bead);     // 没反应 = 打上去是废弹，不提示
+    if (!r) continue;
+    const txt = r.name + (r.mult > 0 ? ' ×' + r.mult : '');
+    ctx.font = '700 ' + Math.max(10, Math.round(14 * mt.scale)) + 'px system-ui, sans-serif';
+    const w = ctx.measureText(txt).width;
+    const bh = Math.max(13, 17 * mt.scale);
+    const by = b.y - b.r - Math.max(12, 20 * mt.scale);
+    ctx.fillStyle = 'rgba(8,12,20,0.80)';
+    ctx.fillRect(b.x - w / 2 - 4, by, w + 8, bh);
+    ctx.fillStyle = elemColor(bead);
+    ctx.fillText(txt, b.x, by + bh - 2);
+    shown += 1;
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+}
+
+function drawCores(ctx, G) {
+  const sc = G.sc;
+  if (!sc || !sc.cores || !sc.cores.length) return;
+  const mt = G.metrics;
+  const T = DESIGN.elemCoreLife;
+  for (let i = 0; i < sc.cores.length; i++) {
+    const c = sc.cores[i];
+    const r = mt.r * 0.78;
+    const pulse = 1 + 0.16 * Math.sin((T - c.t) * 7);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * pulse, 0, TAU);
+    ctx.fillStyle = 'rgba(142,222,82,0.92)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(232,255,190,0.95)';
+    ctx.lineWidth = Math.max(1.5, r * 0.22);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r * pulse + 3.5 * mt.scale, -Math.PI / 2,
+      -Math.PI / 2 + TAU * Math.max(0, Math.min(1, c.t / T)));
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.2, r * 0.18);
+    ctx.stroke();
+  }
+}
+
+function drawProjectiles(ctx, G) {
+  const sc = G.sc;
+  if (!sc || !sc.projectiles) return;
+  for (let i = 0; i < sc.projectiles.length; i++) {
+    const p = sc.projectiles[i];
+    const svp = sc.mode === 'seven';
+    drawBead(ctx, p.x, p.y, p.r, svp ? elemGlyph(p.base) : p.base, false,
+      svp ? elemColor(p.base) : null, null, null, 0);
+  }
+}
+
+// U9：run 长度徽标 + 识别窗口倒计时条。
+// 存在的理由见 DESIGN.md §2.2：两轨共用一条不透明轨道带，靠内那条对比度天然更低，
+// 所以「阅读框读到第几颗」必须由徽标补，不能只靠看小球。
+function drawRunBadges(ctx, G) {
+  const sc = G.sc;
+  if (!sc || !sc.runsInfo || !sc.chain) return;
+  const mt = G.metrics;
+  const balls = sc.chain.balls;
+  const side = sc.rails.eliminate.offset >= 0 ? 1 : -1;
+  const dist = Math.abs(sc.rails.eliminate.offset) + mt.r + 16 * mt.scale;
+  for (let i = 0; i < sc.runsInfo.length; i++) {
+    const r = sc.runsInfo[i];
+    const mid = balls[Math.floor((r.i0 + r.i1) / 2)];
+    if (!mid || mid.x == null) continue;
+    const n = sc.path.normalAt(mid.wp);
+    const x = mid.x + n.x * dist * side;
+    const y = mid.y + n.y * dist * side;
+    const st = runStatus(r);
+    // 把「还差几颗」直接写出来 —— 4 连/5 连不消是最反直觉的一条，得让人看见。
+    const label = st.mod ? ('✓ ' + r.len + ' 颗 · 可消') : (r.len + ' 颗 · 还差 ' + st.toNext);
+    ctx.font = 'bold ' + Math.round(13 * mt.scale) + 'px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = Math.max(34 * mt.scale, (ctx.measureText ? ctx.measureText(label).width : 30) + 14 * mt.scale);
+    const h = 18 * mt.scale;
+    ctx.fillStyle = st.mod ? 'rgba(30,96,64,0.92)' : 'rgba(36,46,64,0.92)';
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
+    ctx.strokeStyle = st.mod ? 'rgba(127,224,160,0.95)' : 'rgba(120,150,190,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+    ctx.fillStyle = st.mod ? '#c9ffe0' : 'rgba(200,215,235,0.9)';
+    ctx.fillText(label, x, y + 1);
+  }
+}
+
+// 模式按钮：右下角。点它切模式（main.js 里判点击，共用 modeButtonRect 的几何）。
+// 按钮里画一颗"口中珠子"的缩略 —— 小球 = 匹配、大球 = 加球，和核糖体里的一致。
+// §61 局内的「回菜单」按钮（左下角，和右下角的模式按钮对称）。
+// 手机上没有 Esc，所以必须有实体按钮 —— 这是离开一关的唯一出路。
+function drawMenuButton(ctx, G) {
+  const mt = G.metrics;
+  const b = menuButtonRect(G.view, mt);
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, b.r, 0, TAU);
+  ctx.fillStyle = 'rgba(12,20,34,0.86)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, 2 * mt.scale);
+  ctx.strokeStyle = 'rgba(150,185,230,0.8)';
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = Math.max(10, Math.round(12 * mt.scale)) + 'px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(226,238,255,0.95)';
+  ctx.fillText('菜单', b.x, b.y + 0.5);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+}
+
+// ★ §61 开始菜单。
+//   背景不是另画的 —— 它直接用**已经装配好的那一关**当背景板（main.js 在菜单态
+//   不推进场景，所以是静止的）。省一整套美术，而且玩家一眼能看到自己上次在哪一关。
+function drawMenu(ctx, G) {
+  const v = G.view, mt = G.metrics;
+  const M = menuLayout(v, mt, G.menuItems || []);
+
+  // 暗幕
+  ctx.fillStyle = 'rgba(6,10,18,0.87)';
+  ctx.fillRect(0, 0, v.w, v.h);
+
+  // 标题
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#e8f2ff';
+  ctx.font = '800 ' + Math.max(26, Math.round(44 * mt.scale)) + 'px system-ui, sans-serif';
+  ctx.fillText('RNA 祖玛', v.cx, M.titleY);
+  ctx.fillStyle = 'rgba(160,195,235,0.95)';
+  ctx.font = '600 ' + Math.max(11, Math.round(15 * mt.scale)) + 'px system-ui, sans-serif';
+  ctx.fillText('反色配对 · 凑三颗 · 读出 mRNA', v.cx, M.titleY + Math.max(20, 30 * mt.scale));
+
+  // 分组标题
+  for (let i = 0; i < M.groups.length; i++) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(150,200,240,0.9)';
+    ctx.font = '700 ' + Math.max(11, Math.round(14 * mt.scale)) + 'px system-ui, sans-serif';
+    ctx.fillText(M.groups[i].name, M.x0, M.groups[i].y + 8 * mt.scale);
+  }
+
+  // 关卡按钮
+  ctx.textAlign = 'center';
+  for (let i = 0; i < M.buttons.length; i++) {
+    const b = M.buttons[i];
+    const tut = b.item.group === '新手关';
+    ctx.fillStyle = tut ? 'rgba(26,60,58,0.95)' : 'rgba(22,32,50,0.95)';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.lineWidth = Math.max(1.2, 1.6 * mt.scale);
+    ctx.strokeStyle = tut ? 'rgba(92,201,168,0.9)' : 'rgba(120,170,230,0.7)';
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = '#eaf4ff';
+    ctx.font = '700 ' + Math.max(11, Math.round(15 * mt.scale)) + 'px system-ui, sans-serif';
+    ctx.fillText(b.item.label, b.x + b.w / 2, b.y + b.h / 2);
+  }
+
+  // 底部操作说明
+  ctx.fillStyle = 'rgba(150,180,215,0.9)';
+  ctx.font = Math.max(10, Math.round(12 * mt.scale)) + 'px system-ui, sans-serif';
+  ctx.fillText('点关卡开始 · 点画面发射 · 点核糖体换珠 · 点右下角切模式 · Esc 回菜单',
+    v.cx, M.footerY);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+}
+
+function drawModeButton(ctx, G) {
+  const sc = G.sc;
+  if (!sc) return;
+  const mt = G.metrics;
+  const btn = modeButtonRect(G.view, mt);
+  // ★ §65 按钮只表示 匹配 <-> 加球 两态（七球不上按钮，见 main.js 的注释）。
+  //   颜色和缩略珠子都跟着模式变，玩家不用读字也知道这一发是干什么的。
+  const isIns = sc.mode === 'insert';
+  const isElem = false;
+  const accent = isIns ? '#ff9a3c' : '#2fd6c6';
+
+  ctx.beginPath();
+  ctx.arc(btn.x, btn.y, btn.r, 0, TAU);
+  ctx.fillStyle = 'rgba(12,20,34,0.86)';
+  ctx.fill();
+  const flash = sc.modeFlash > 0 ? Math.min(1, sc.modeFlash / 0.28) : 0;
+  ctx.lineWidth = Math.max(2, (2.6 + 3.0 * flash) * mt.scale);
+  ctx.strokeStyle = accent;
+  ctx.stroke();
+  if (flash > 0) {                       // 按压反馈：外圈再亮一下
+    ctx.beginPath();
+    ctx.arc(btn.x, btn.y, btn.r + 4 * mt.scale, 0, TAU);
+    ctx.lineWidth = Math.max(1.5, 2.4 * mt.scale * flash);
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = flash;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // 缩略珠子：小球 = 匹配，大球 = 加球
+  const br = isIns ? btn.r * 0.50 : btn.r * 0.34;
+  ctx.beginPath();
+  ctx.arc(btn.x, btn.y - btn.r * 0.18, br, 0, TAU);
+  ctx.fillStyle = accent;
+  ctx.fill();
+  if (isElem) {                     // 元素模式：缩略珠子外面套一圈元素环
+    ctx.beginPath();
+    ctx.arc(btn.x, btn.y - btn.r * 0.18, br * 0.62, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = Math.max(1.5, br * 0.26);
+    ctx.stroke();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = Math.max(10, Math.round(13 * mt.scale)) + 'px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(226,238,255,0.95)';
+  ctx.fillText(isIns ? '加球' : (isElem ? '七球' : '匹配'), btn.x, btn.y + btn.r * 0.52);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+}
+
+function drawDebug(ctx, G) {
+  const pts = G.path.pts;
+  ctx.strokeStyle = 'rgba(120,255,255,0.85)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i += 20) {
+    const p = pts[i];
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + p.nx * 16, p.y + p.ny * 16);
+  }
+  ctx.stroke();
+
+  for (let i = 0; i < G.issues.length; i++) {
+    const it = G.issues[i];
+    if (it.x == null) continue;
+    ctx.beginPath();
+    ctx.arc(it.x, it.y, 9, 0, TAU);
+    ctx.strokeStyle = it.severity === 'error' ? '#ff5a5f' : (it.severity === 'warn' ? '#ffd23f' : '#43d17a');
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function drawLegend(ctx, G) {
+  const mt = G.metrics;
+  const v = G.view;
+  const x = 16;
+  let y = v.h - 92 * Math.max(0.85, mt.scale);
+  const R = mt.R * 0.85;
+  const r = mt.r * 0.85;
+  drawBead(ctx, x + R + 2, y, R, 'A', false);
+  ctx.fillStyle = 'rgba(200,220,245,0.9)';
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('出球道 · 大球  D=' + (2 * mt.R).toFixed(1) + 'px', x + R * 2 + 12, y);
+  y += R + r + 18;
+  drawBead(ctx, x + r + 2, y, r, 'U', false);
+  ctx.fillText('三消道 · 小球  d=' + (2 * mt.r).toFixed(1) + 'px（×1/√2）', x + R * 2 + 12, y);
+}
+
+function render(ctx, G) {
+  const v = G.view;
+  ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
+  drawBackground(ctx, G);
+
+  const zs = G.zLevels;
+  for (let k = 0; k < zs.length; k++) {
+    drawTrackLayer(ctx, G, zs[k]);
+    drawBeadLayer(ctx, G, zs[k]);
+    drawPairLinks(ctx, G, zs[k]);
+    drawMergeLayer(ctx, G, zs[k]);
+  }
+
+  // §63 静止练习关没有洞穴（也就没有失败）—— 画一个不存在的终点只会误导
+  if (!(G.sc && G.sc.still)) drawCave(ctx, G);
+  drawCores(ctx, G);
+  drawReactionHints(ctx, G);
+  drawRibosome(ctx, G);
+  drawProjectiles(ctx, G);
+
+  // ★ §61 菜单态：场景照画（当背景板），但**不画任何局内 HUD** ——
+  //   关卡名/分数/徽章在菜单后面露出来会很脏。调试层是唯一的例外（它本来就不给玩家看）。
+  if (G.screen === 'menu') {
+    if (G.debug) drawDebug(ctx, G);
+    drawMenu(ctx, G);
+    return;
+  }
+
+  drawModeButton(ctx, G);
+  drawMenuButton(ctx, G);
+  drawRunBadges(ctx, G);
+  if (G.debug) drawDebug(ctx, G);
+
+  const mt = G.metrics;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(210,230,255,0.95)';
+  ctx.font = '700 15px system-ui, sans-serif';
+  const ii0 = G.chainInfo;
+  ctx.fillText(G.level.name, 16, 14);
+  // ★ §60 新手关的教学提示：直接写在关卡名下面。
+  //   不是"请点击此处"那种废话，而是**这一关要教的规则本身**。
+  //   §64：支持多行 —— 有些规则是一整句话（比如"灰球什么时候才炸"），
+  //   硬压成一行就只能含糊其辞，而含糊的提示等于没提示。
+  if (G.level && G.level.hint) {
+    const lines = Object.prototype.toString.call(G.level.hint) === '[object Array]'
+      ? G.level.hint : [G.level.hint];
+    ctx.font = '600 ' + Math.max(11, Math.round(15 * mt.scale)) + 'px system-ui, sans-serif';
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillStyle = i === 0 ? '#ffd76a' : 'rgba(255,215,106,0.78)';
+      ctx.fillText(lines[i], 16, 14 + (19 + i * 17) * mt.scale);
+    }
+  }
+  // 过关进度（非 debug 也显示）—— 原版是靠分数达标过关的，得让玩家看得见
+  if (ii0) {
+    // ★ 两类关卡目标（DESIGN.md §55）：有限球数关 = 清空过关；无尽关 = 分数过关。
+    //   所以进度条画的东西不一样，而且 Infinity 绝不能漏进文案（会显示"分数 120 / Infinity"）。
+    const sTgt = ii0.scoreTarget;
+    const hasScoreTgt = typeof sTgt === 'number' && isFinite(sTgt) && sTgt > 0;
+    ctx.font = '600 ' + Math.max(11, Math.round(15 * mt.scale)) + 'px system-ui, sans-serif';
+    ctx.fillStyle = G.sc.won ? '#7ee0a0' : 'rgba(200,225,255,0.95)';
+    ctx.fillText((G.sc.won ? '过关！ ' : '') +
+      '场上 ' + ii0.onField + ' 颗  ·  ' +
+      (ii0.endless ? '无限出球' : ('待出 ' + ii0.remaining + ' / ' + ii0.budget + ' 颗')) +
+      '    命 ' + ii0.lives + '    分数 ' + ii0.score +
+      (hasScoreTgt ? (' / ' + sTgt) : ''),
+      16, 14 + 20 * mt.scale);
+    // 进度条：有限球数关 = 出球进度（发满 + 清光才过关）；无尽关 = 分数进度
+    const prog = ii0.endless
+      ? (hasScoreTgt ? ii0.score / sTgt : 0)
+      : (ii0.budget > 0 ? ii0.spawned / ii0.budget : 0);
+    const bw = 150 * mt.scale, bh = 5 * mt.scale, by = 14 + 38 * mt.scale;
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(16, by, bw, bh);
+    ctx.fillStyle = G.sc.won ? '#7ee0a0' : '#3c8cdc';
+    ctx.fillRect(16, by, bw * Math.max(0, Math.min(1, prog)), bh);
+  }
+  // ★ §57 元素模式：状态行（护盾/草原核/反应数/装载的元素）+ 反应横幅
+  if (G.sc && G.sc.mode === 'seven' && ii0) {
+    ctx.font = '600 ' + Math.max(11, Math.round(14 * mt.scale)) + 'px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(225,235,255,0.92)';
+    const le = ii0.loaded || [null, null];
+    ctx.fillText('盾 ' + ii0.shields + '   核 ' + ii0.cores + '   反应 ' + ii0.reactions +
+      '   装载 ' + elemName(le[0]) + '/' + elemName(le[1]), 16, 14 + 58 * mt.scale);
+    const lr = ii0.lastReaction;
+    const fl = G.sc.reactionFlash || 0;
+    if (lr && fl > 0) {
+      ctx.globalAlpha = Math.min(1, fl / 0.6);
+      ctx.textAlign = 'center';
+      ctx.font = '700 ' + Math.max(16, Math.round(26 * mt.scale)) + 'px system-ui, sans-serif';
+      ctx.fillStyle = elemColor(lr.trigger);
+      ctx.fillText(lr.name + (lr.mult > 0 ? '  ×' + lr.mult : ''), v.cx, v.cy + 92 * mt.scale);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+    }
+  }
+
+  ctx.font = '12px ui-monospace, Menlo, monospace';
+  ctx.fillStyle = 'rgba(150,180,215,0.9)';
+  const errs = G.issues.filter(function (i) { return i.severity === 'error'; }).length;
+  const warns = G.issues.filter(function (i) { return i.severity === 'warn'; }).length;
+  const bridges = G.issues.filter(function (i) { return i.code === 'BRIDGE'; }).length;
+  ctx.fillText('railOrder=' + G.level.railOrder + '   scale=' + mt.scale.toFixed(3), 16, 38);
+  ctx.fillText('R=' + mt.R.toFixed(1) + '  r=' + mt.r.toFixed(1) + '  R/r=' + mt.diameterRatio.toFixed(4) +
+               '  area=' + mt.areaRatio.toFixed(3), 16, 56);
+  ctx.fillText('d=' + mt.d.toFixed(1) + '  p=' + mt.p.toFixed(1) +
+               '  L=' + G.path.length.toFixed(0) + 'px  珠=' + (G.beads.spawn.length + G.beads.eliminate.length), 16, 74);
+  ctx.fillStyle = errs ? '#ff8a8f' : (warns ? '#ffd23f' : '#7fe0a0');
+  ctx.fillText('校验: error=' + errs + ' warn=' + warns + ' 桥=' + bridges + '（D 看细节）', 16, 92);
+  var ci = G.chainInfo;
+  if (ci) {
+    ctx.fillStyle = 'rgba(160,200,240,0.92)';
+    ctx.fillText('分数 ' + ci.score + '     命 ' + ci.lives, 16, 164);
+        // ⚠ 这里以前还印「在读=」，但阅读窗（readWindow）已经撤掉了（DESIGN.md §21），
+        //   sceneInfo 不再暴露 reading -> 界面上一直显示"在读=undefined"。
+        //   直接去掉这个字段，而不是硬塞一个值糊过去（smoke 的文案断言抓到的）。
+        ctx.fillText('run=[' + ci.runs.join(',') + ']  已消=' + ci.stats.cleared + ' 密码子=' + ci.stats.codons, 16, 146);
+    ctx.fillText('配对=' + ci.paired + '  命中: 配对 ' + ci.stats.pairs + ' / 错配 ' + ci.stats.mismatches + '  弹丸=' + ci.shots, 16, 128);
+    ctx.fillText('珠串 n=' + ci.balls + '  速度=' + ci.speed.toFixed(1) + 'px/s  队头=' + ci.headWp.toFixed(0) + '/' + ci.curveLength.toFixed(0) + '  (' + (ci.progress * 100).toFixed(1) + '%）', 16, 110);
+  }
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(150,180,215,0.9)';
+  ctx.fillText('fps ' + G.fps, v.w - 16, 14);
+  ctx.fillText('点画面 = 发射   点核糖体 = 换珠', v.w - 16, 32);
+  ctx.fillText('[空格]/右键 换珠   [R] 重开   [1][2][3] 切关   [D] 调试', v.w - 16, 50);
+
+  // U11 状态横幅：失败（被吞掉）/ 命尽
+  const ii = G.chainInfo;
+  if (ii && ii.gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, v.cy - 62, v.w, 124);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff8a8f';
+    ctx.font = '700 34px system-ui, sans-serif';
+    ctx.fillText('GAME OVER', v.cx, v.cy - 12);
+    ctx.fillStyle = 'rgba(230,240,255,0.92)';
+    ctx.font = '600 16px system-ui, sans-serif';
+    ctx.fillText('分数 ' + ii.score + '   ［R］重开', v.cx, v.cy + 26);
+    ctx.textAlign = 'left';
+  } else if (ii && ii.won) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7ee0a0';
+    ctx.font = '700 34px system-ui, sans-serif';
+    ctx.fillText('过 关', v.cx, v.cy - 12);
+    ctx.fillStyle = 'rgba(230,240,255,0.92)';
+    ctx.font = '600 16px system-ui, sans-serif';
+    // ★ 写明是**哪条路**过的关（DESIGN.md §55）—— 清空和分数是完全不同的玩法目标。
+    const why = ii.winReason === 'clear' ? '清空全场'
+      : (ii.winReason === 'score' ? '分数达标' : '');
+    ctx.fillText((why ? why + '   ' : '') + '分数 ' + ii.score +
+      '   ［R］重开 · 左下角回菜单', v.cx, v.cy + 26);
+    ctx.textAlign = 'left';
+  } else if (ii && ii.losing) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,110,130,0.92)';
+    ctx.font = '700 24px system-ui, sans-serif';
+    ctx.fillText('被降解洞穴吞掉！剩余 ' + ii.lives + ' 命', v.cx, 56);
+    ctx.textAlign = 'left';
+  }
+  drawLegend(ctx, G);
+}
+
+
+// ===== src/main.js =====
+// U1 骨架 + U2 几何：主循环、状态、输入、调试钩子。装配逻辑在 scene.js，渲染在 render.js。
+
+
+
+
+
+
+
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+
+const G = {
+  view: viewFor(900, 900),
+  metrics: metrics(1),
+  levelIndex: 0,
+  level: ALL_LEVELS[0],
+  path: null,
+  rails: null,
+  railPolys: null,
+  runs: null,
+  beads: { spawn: [], eliminate: [] },
+  zLevels: [0],
+  issues: [],
+  debug: false,
+  // ★ §61 开局进菜单。update() 在菜单态**不推进场景** —— 否则玩家在菜单里挑关卡时，
+  //   链子会自己往洞口爬，点进去已经快输了。
+  screen: 'menu',
+  menuItems: [],
+  mode: DESIGN.defaultMode,     // ★ 模式是**玩家偏好**，不属于场景状态 —— 见下面的 rebuild 注释
+  frame: 0,
+  time: 0,
+  fps: 0
+};
+
+function rebuild() {
+  const sc = assembleScene(ALL_LEVELS[G.levelIndex], G.view, 20260101 + G.levelIndex * 977);
+  G.sc = sc;
+  G.level = sc.level;
+  G.metrics = sc.metrics;
+  // ★ 模式是玩家偏好，不是场景状态：rebuild 会新建场景（初始模式是 defaultMode），
+  //   这里把玩家选过的模式贴回去。否则 **手机浏览器地址栏收起/展开触发的 resize**
+  //   会重建场景、把模式静默重置回 match —— 表现就是"按了按钮没反应/切了又跳回去"。
+  setMode(sc, G.mode);
+  G.path = sc.path;
+  G.rails = sc.rails;
+  G.railPolys = sc.railPolys;
+  G.runs = sc.runs;
+  G.zLevels = sc.zLevels;
+  G.issues = sc.issues;
+  G.beads = sc.beads;
+  G.chainInfo = sceneInfo(sc);          // 菜单态也要有，调试层要用
+  // 菜单条目在这里算一次：render 画按钮、onPointerDown 判点击，两边共用同一份
+  G.menuItems = ALL_LEVELS.map(function (l, i) {
+    const tut = i < TUTORIALS.length;
+    return {
+      index: i,
+      group: tut ? '新手关' : '核心关',
+      label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name))
+    };
+  });
+}
+
+function resize() {
+  const w = Math.max(320, Math.round(window.innerWidth || 900));
+  const h = Math.max(320, Math.round(window.innerHeight || 900));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  if (canvas.style) { canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; }
+  const v = viewFor(w, h);
+  v.dpr = dpr;
+  G.view = v;
+  rebuild();
+}
+
+const STEP = 1 / 60;
+let last = 0;
+let acc = 0;
+let fpsAcc = 0;
+let fpsN = 0;
+
+function update(dt) {
+  G.time += dt;
+  if (G.screen === 'menu') return;        // 菜单态：场景冻住当背景板
+  if (G.sc) {
+    advanceScene(G.sc, dt);
+    G.chainInfo = sceneInfo(G.sc);
+  }
+}
+
+function frame(now) {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
+  const t = typeof now === 'number' ? now : 0;
+  if (!last) last = t;
+  let dt = (t - last) / 1000;
+  last = t;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 0.25) dt = 0.25;
+
+  acc += dt;
+  let guard = 0;
+  while (acc >= STEP && guard < 8) { update(STEP); acc -= STEP; guard += 1; }
+
+  render(ctx, G);
+  G.frame += 1;
+
+  fpsAcc += dt; fpsN += 1;
+  if (fpsAcc >= 0.5) { G.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+}
+
+function setLevel(i) {
+  if (i < 0 || i >= ALL_LEVELS.length) return;
+  G.levelIndex = i;
+  rebuild();
+}
+
+// 换屏（菜单 <-> 局内）
+function setScreen(s) {
+  G.screen = (s === 'menu') ? 'menu' : 'play';
+  return G.screen;
+}
+// 从菜单开始某一关
+function startLevel(i) {
+  if (typeof i === 'number') setLevel(i);
+  setScreen('play');
+  return G.levelIndex;
+}
+
+// 模式：改场景 + 记在 G 上（rebuild 时贴回去）
+// ★★ §65 右下角按钮**只在 匹配 <-> 加球 之间切**。
+//   用户：「七球模式请不要加入右下角的切换按钮，我们先不管」——
+//   七球（元素）那套代码留着，但不上按钮：它现在是个没定型的试验，
+//   摆在玩家的模式循环里只会让人误以为那是个正式玩法。
+//   要用它就走调试钩子 __ZUMA__.setMode('seven')（测试和探针就是这么用的）。
+function applyMode(m) {
+  G.mode = (m === 'seven') ? 'seven' : ((m === 'insert') ? 'insert' : 'match');
+  if (G.sc) setMode(G.sc, G.mode);
+  return G.mode;
+}
+function cycleMode() {
+  return applyMode(G.mode === 'insert' ? 'match' : 'insert');
+}
+
+function onKey(e) {
+  const k = e && e.key;
+  if (!k) return;
+  if (k === 'd' || k === 'D') { G.debug = !G.debug; return; }
+  if (k === 'Escape') { setScreen('menu'); return; }
+  if (k === 'Enter' || k === 'Return') {
+    if (G.screen === 'menu') startLevel(G.levelIndex);
+    return;
+  }
+  if (k >= '1' && k <= '9') { startLevel(parseInt(k, 10) - 1); return; }
+  // 菜单态下别的游戏按键一律不响应（免得在菜单里把珠子打了）
+  if (G.screen === 'menu') return;
+  if (k === 'r' || k === 'R') { rebuild(); return; }
+  if (k === ' ' || k === 'Spacebar') { if (G.sc) swapLoaded(G.sc.rb); return; }
+  if (k === 'Tab' || k === 'q' || k === 'Q') { cycleMode(); if (e.preventDefault) e.preventDefault(); return; }
+  if (k === 'ArrowLeft') { if (G.sc) rotateAim(G.sc.rb, -0.06); return; }
+  if (k === 'ArrowRight') { if (G.sc) rotateAim(G.sc.rb, 0.06); return; }
+  if (k === 'o' || k === 'O') {
+    const lv = ALL_LEVELS[G.levelIndex];
+    lv.railOrder = lv.railOrder === 'spawn-outer' ? 'spawn-inner' : 'spawn-outer';
+    rebuild();
+  }
+}
+
+function pointerPos(e) {
+  const rect = (canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0 });
+  let px = 0, py = 0;
+  if (e.touches && e.touches.length) { px = e.touches[0].clientX; py = e.touches[0].clientY; }
+  else if (e.changedTouches && e.changedTouches.length) { px = e.changedTouches[0].clientX; py = e.changedTouches[0].clientY; }
+  else { px = e.clientX || 0; py = e.clientY || 0; }
+  return { x: px - (rect.left || 0), y: py - (rect.top || 0) };
+}
+
+function onPointerMove(e) {
+  if (!G.sc) return;
+  const p = pointerPos(e);
+  aimAt(G.sc.rb, p.x, p.y);
+}
+
+function onPointerDown(e) {
+  if (!G.sc) return;
+  const p = pointerPos(e);
+  // ★ 菜单态：只判菜单按钮，点别处什么都不做（尤其**不能发射**）
+  if (G.screen === 'menu') {
+    const M = menuLayout(G.view, G.metrics, G.menuItems || []);
+    for (let i = 0; i < M.buttons.length; i++) {
+      const b = M.buttons[i];
+      if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+        startLevel(b.item.index);
+        return;
+      }
+    }
+    return;
+  }
+  // 左下角「菜单」按钮：手机上没有 Esc，这是唯一出路
+  const mb = menuButtonRect(G.view, G.metrics);
+  if (Math.hypot(p.x - mb.x, p.y - mb.y) <= mb.r * 1.3) { setScreen('menu'); return; }
+  const rb = G.sc.rb;
+  // 换关走左下角「菜单」（§61）。原来右上角那排 12 个小圆点是"还没有菜单时的权宜之计"，
+  // 现在有了菜单就是**第二个换关入口**，反而更乱，删掉。
+  // 右下角模式按钮：点它切模式，不发射
+  const btn = modeButtonRect(G.view, G.metrics);
+  if (Math.hypot(p.x - btn.x, p.y - btn.y) <= btn.r * 1.25) {
+    cycleMode();
+    return;
+  }
+  // 触屏没有右键：点核糖体本体 = 换珠（与空格/右键等价），点别处 = 瞄准并发射
+  if (Math.hypot(p.x - rb.x, p.y - rb.y) <= rb.r * 1.9) {
+    swapLoaded(rb);
+    return;
+  }
+  aimAt(rb, p.x, p.y);
+  fireShot(G.sc);
+}
+
+// 右键 = 切换口中两颗（与空格等价）
+function onContextMenu(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (G.sc) swapLoaded(G.sc.rb);
+}
+
+if (typeof canvas.addEventListener === 'function') {
+  canvas.addEventListener('mousemove', onPointerMove);
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('touchstart', onPointerDown);
+  canvas.addEventListener('touchmove', onPointerMove);
+  canvas.addEventListener('contextmenu', onContextMenu);
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('resize', resize);
+}
+
+if (typeof window !== 'undefined') {
+  window.__ZUMA__ = {
+    get state() { return G; },
+    get frameCount() { return G.frame; },
+    get levelCount() { return ALL_LEVELS.length; },
+    rebuild: rebuild,
+    resize: resize,
+    setLevel: setLevel,
+    setScreen: setScreen,
+    start: startLevel,
+    get screen() { return G.screen; },
+    get menuItems() { return G.menuItems; },
+    toggleDebug: function () { G.debug = !G.debug; },
+    handleKey: onKey,
+    fire: function () { return G.sc ? fireShot(G.sc) : null; },
+    aim: function (x, y) { return G.sc ? aimAt(G.sc.rb, x, y) : 0; },
+    swap: function () { return G.sc ? swapLoaded(G.sc.rb) : null; },
+    setMode: function (m) { return applyMode(m); },
+    toggleMode: function () { return cycleMode(); },
+    get mode() { return G.mode; },
+    // ★ 必须给 dt 兜底：update(dt) 直接暴露出去的话，任何 Z.step() 空调用都会
+    //   把 dt=undefined 灌进 advanceScene -> speed 变 NaN -> 整个局面静默烂掉
+    //   （smoke 里就这么踩了一次）。调试钩子不该有这么尖的角。
+    step: function (dt) { update(typeof dt === 'number' ? dt : 1 / 60); },
+    renderOnce: function () { render(ctx, G); }
+  };
+}
+
+resize();
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
+
+
+</script>
+</body>
+</html>
+

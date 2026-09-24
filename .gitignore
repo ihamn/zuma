@@ -1,0 +1,24 @@
+# ---- 第三方 / 可重建的东西，不进仓库 ----
+
+# 官方文档镜像（第三方内容，2.9M）
+# 重新生成：node miliastra/tools/fetch-docs.mjs
+miliastra/docs/official/
+
+# Miliastra-knowledge 仓库镜像（第三方，6.6M）
+repo/
+
+# 本地编译的 Lua 解释器（3.1M）
+# 重新生成：bash miliastra/tools/build-lua.sh
+miliastra/vendor/
+
+# 依赖与缓存
+node_modules/
+.npm-cache/
+
+# 隧道 / 留守 的运行时文件
+.tunnel.log
+PARKED.txt
+
+# 临时
+*.tmpdir/
+*.log

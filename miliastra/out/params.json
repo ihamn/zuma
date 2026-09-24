@@ -1,0 +1,350 @@
+{
+ "generatedBy": "miliastra/tools/export-params.mjs",
+ "source": "Zuma/src（本作的设计真源）",
+ "unitNote": "全部长度都是\"设计单位\"，参考视口 900×900。移植时乘一个统一比例即可。",
+ "groups": [
+  {
+   "name": "轨道与几何",
+   "ref": "§2 / §5 / §62 / §63",
+   "items": [
+    {
+     "key": "base",
+     "name": "设计基准边长",
+     "unit": "设计单位",
+     "ref": "§2.3",
+     "value": 900
+    },
+    {
+     "key": "turns",
+     "name": "螺旋圈数（默认）",
+     "unit": "圈",
+     "ref": "§5.1 / §62",
+     "value": 1.9
+    },
+    {
+     "key": "innerRatio",
+     "name": "螺旋内收比（末端半径 / 起端半径）",
+     "unit": "比值",
+     "ref": "§5.1",
+     "value": 0.32
+    },
+    {
+     "key": "pathSamples",
+     "name": "骨架采样点数",
+     "unit": "点",
+     "ref": "§2",
+     "value": 2400
+    },
+    {
+     "key": "outerFit",
+     "name": "骨架占视口的比例",
+     "unit": "比值",
+     "ref": "§2",
+     "value": 0.45
+    },
+    {
+     "key": "outerFitWide",
+     "name": "横向拉伸上限",
+     "unit": "比值",
+     "ref": "§2",
+     "value": 0.62
+    },
+    {
+     "key": "outerFitTall",
+     "name": "竖屏纵向拉伸上限",
+     "unit": "比值",
+     "ref": "§2",
+     "value": 0.86
+    },
+    {
+     "key": "railClearance",
+     "name": "两轨之间的净空",
+     "unit": "设计单位",
+     "ref": "§24",
+     "value": 9
+    },
+    {
+     "key": "minScale",
+     "name": "最小缩放（手机可读性下限）",
+     "unit": "比值",
+     "ref": "§24",
+     "value": 0.82
+    }
+   ]
+  },
+  {
+   "name": "球与珠距",
+   "ref": "§2 / §4",
+   "items": [
+    {
+     "key": "spawnRadius",
+     "name": "出球道大球半径 R",
+     "unit": "设计单位",
+     "ref": "§2.4 / §A12",
+     "value": 19
+    },
+    {
+     "key": "smallDiameterRatio",
+     "name": "小球直径 / 大球直径 = 1/√2",
+     "unit": "比值",
+     "ref": "§A12",
+     "value": 0.7071067811865475
+    },
+    {
+     "key": "beadGap",
+     "name": "同轨相邻球净空（球距 p = 2R + 它）",
+     "unit": "设计单位",
+     "ref": "§4.3",
+     "value": 1.5
+    }
+   ]
+  },
+  {
+   "name": "珠串推进（绳模型）",
+   "ref": "§4.3",
+   "items": [
+    {
+     "key": "chainSpeed",
+     "name": "珠串目标速度（= 冒球率 × 球距）",
+     "unit": "设计单位/秒",
+     "ref": "§4.3 / §54",
+     "value": 42
+    },
+    {
+     "key": "chainAccel",
+     "name": "加速（慢）",
+     "unit": "设计单位/秒²",
+     "ref": "§4.3",
+     "value": 30
+    },
+    {
+     "key": "chainDecel",
+     "name": "减速（快，约 20:1）",
+     "unit": "设计单位/秒²",
+     "ref": "§4.3",
+     "value": 620
+    },
+    {
+     "key": "slowDistance",
+     "name": "洞穴前减速带长度（0 = 关）",
+     "unit": "设计单位",
+     "ref": "§12-B7 冻结",
+     "value": 0
+    },
+    {
+     "key": "slowFactor",
+     "name": "减速带末端速度分母",
+     "unit": "比值",
+     "ref": "§12-B7 冻结",
+     "value": 2.6
+    }
+   ]
+  },
+  {
+   "name": "发射与配对",
+   "ref": "§4.4 / §U6-U8",
+   "items": [
+    {
+     "key": "ribosomeRadius",
+     "name": "核糖体半径",
+     "unit": "设计单位",
+     "ref": "§U6",
+     "value": 30
+    },
+    {
+     "key": "fireCooldown",
+     "name": "两发最小间隔",
+     "unit": "秒",
+     "ref": "§U7",
+     "value": 0.16
+    },
+    {
+     "key": "shotSpeed",
+     "name": "弹丸速度",
+     "unit": "设计单位/秒",
+     "ref": "§U7",
+     "value": 1150
+    },
+    {
+     "key": "shotRadiusRatio",
+     "name": "弹丸半径 = 小球半径 × 它",
+     "unit": "比值",
+     "ref": "§U7",
+     "value": 0.9
+    },
+    {
+     "key": "shotMaxLife",
+     "name": "弹丸存活上限",
+     "unit": "秒",
+     "ref": "§U7",
+     "value": 3
+    },
+    {
+     "key": "dockTime",
+     "name": "配对吸附飞行时长",
+     "unit": "秒",
+     "ref": "§4.2",
+     "value": 0.3
+    },
+    {
+     "key": "bagBias",
+     "name": "珠子袋偏向可用池的概率",
+     "unit": "比值",
+     "ref": "§17.5 / §39 / §54",
+     "value": 1
+    }
+   ]
+  },
+  {
+   "name": "消除与爆炸",
+   "ref": "§19 / §28 / §30",
+   "items": [
+    {
+     "key": "backFrames",
+     "name": "消除后退的帧数",
+     "unit": "帧",
+     "ref": "§36",
+     "value": 30
+    },
+    {
+     "key": "backStopFrames",
+     "name": "后退期间暂停推进的帧数",
+     "unit": "帧",
+     "ref": "§28.6",
+     "value": 20
+    }
+   ]
+  },
+  {
+   "name": "生命与过关",
+   "ref": "§53 / §55 / §56",
+   "items": [
+    {
+     "key": "startLives",
+     "name": "初始生命",
+     "unit": "条",
+     "ref": "§A15",
+     "value": 3
+    },
+    {
+     "key": "losingSpeed",
+     "name": "失败演出时珠子被吸入洞穴的速度",
+     "unit": "设计单位/秒",
+     "ref": "§U11",
+     "value": 1500
+    },
+    {
+     "key": "scorePerBall",
+     "name": "每消除一颗的分数",
+     "unit": "分",
+     "ref": "§U11",
+     "value": 10
+    },
+    {
+     "key": "scoreTarget",
+     "name": "分数过关目标（无尽关用）",
+     "unit": "分",
+     "ref": "§53",
+     "value": 500
+    },
+    {
+     "key": "winOnClear",
+     "name": "清空过关开关",
+     "unit": "布尔",
+     "ref": "§52 / §55",
+     "value": true
+    },
+    {
+     "key": "ballBudget",
+     "name": "球数预算（0 = 无限出球）",
+     "unit": "颗",
+     "ref": "§55",
+     "value": 0
+    },
+    {
+     "key": "baseRepeat",
+     "name": "同碱基成段概率（原版 mBallRepeat）",
+     "unit": "概率",
+     "ref": "§54"
+    }
+   ]
+  },
+  {
+   "name": "模式与表现",
+   "ref": "§46 / §60 / §64",
+   "items": [
+    {
+     "key": "defaultMode",
+     "name": "默认模式",
+     "unit": "枚举",
+     "ref": "§46 / §65",
+     "value": "match"
+    },
+    {
+     "key": "modeFlashTime",
+     "name": "模式按钮高亮时长",
+     "unit": "秒",
+     "ref": "§46",
+     "value": 0.28
+    },
+    {
+     "key": "mergeTime",
+     "name": "加球并入动画时长",
+     "unit": "秒",
+     "ref": "§U12",
+     "value": 0.26
+    },
+    {
+     "key": "insertPairs",
+     "name": "并入后是否自动配对",
+     "unit": "布尔",
+     "ref": "§18",
+     "value": false
+    },
+    {
+     "key": "retreatTime",
+     "name": "消除后退的视觉缓动时长",
+     "unit": "秒",
+     "ref": "§36",
+     "value": 0.22
+    }
+   ]
+  }
+ ],
+ "chemistry": {
+  "bases": [
+   "A",
+   "U",
+   "G",
+   "C",
+   "T"
+  ],
+  "complement": {
+   "A": [
+    "U",
+    "T"
+   ],
+   "U": [
+    "A"
+   ],
+   "T": [
+    "A"
+   ],
+   "G": [
+    "C"
+   ],
+   "C": [
+    "G"
+   ]
+  }
+ },
+ "levelCount": {
+  "tutorials": 7,
+  "core": 4,
+  "total": 11
+ },
+ "modes": [
+  "match",
+  "insert"
+ ]
+}

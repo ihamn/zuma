@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>祖玛 · 千星奇域移植 · 电脑端操作手册</title>
+<style>
+  :root { color-scheme: dark }
+  body { margin:0; padding:24px 18px 80px; background:#0d1420; color:#dbe7f5;
+         font:16px/1.75 system-ui,-apple-system,"Noto Sans SC",sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto }
+  h1 { font-size:24px; margin:0 0 6px }
+  h2 { font-size:19px; margin:34px 0 10px; padding-bottom:6px; border-bottom:1px solid #22304a }
+  h3 { font-size:16px; margin:20px 0 6px; color:#9dc0ea }
+  .sub { color:#8ea6c4; margin:0 0 18px }
+  code,kbd { background:#152036; padding:1px 6px; border-radius:5px; font-size:14px;
+             font-family: ui-monospace,Menlo,Consolas,monospace; color:#c9e2ff }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:15px }
+  th,td { border:1px solid #22304a; padding:7px 10px; text-align:left; vertical-align:top }
+  th { background:#152036; color:#9dc0ea; font-weight:600 }
+  .box { background:#121c2e; border:1px solid #22304a; border-radius:12px; padding:14px 16px; margin:14px 0 }
+  .warn { border-color:#6b3a3a; background:#241419 }
+  .ok { border-color:#2f5c3a; background:#13241a }
+  .big { font-size:17px; font-weight:600; color:#eaf2ff }
+  ol,ul { padding-left:22px }
+  li { margin:5px 0 }
+  a.btn { display:inline-block; background:#2b6cb0; color:#fff; text-decoration:none;
+          padding:11px 20px; border-radius:10px; font-weight:600; margin:6px 8px 6px 0 }
+  a.btn:hover { background:#3b82d6 }
+  a.alt { background:#2f4358 }
+  .step { counter-reset:none }
+  .k { color:#ffd479 }
+  .muted { color:#8ea6c4; font-size:14px }
+  hr { border:0; border-top:1px solid #22304a; margin:30px 0 }
+</style>
+<div class="wrap">
+
+<h1>电脑端操作手册 · 祖玛 · 千星奇域移植</h1>
+<p class="sub">给你（人）看的，不是给程序看的。左边手机在跑代码，这台电脑在跑编辑器，手册就是中间那根线。</p>
+
+<div class="box ok">
+  <div class="big">先记住一句话</div>
+  你要做的事只有一件：<b>把 <code>zuma.lua</code> 这个文件，挂到编辑器里一个客户端控件上，然后试玩。</b>
+  其它全是细节。
+</div>
+
+<h2>第 0 步 · 你现在手上有什么</h2>
+<ul>
+  <li>手机上有一个<b>整包脚本</b> <code>zuma.lua</code>（约 86 KB，14 个模块打成一个文件）—— 这就是要上传的东西。</li>
+  <li>它里面已经有：轨道数学、消球规则、画面同步、输入、11 个关卡数据。<b>编辑器里不需要再写任何逻辑</b>，只需要摆几个"空壳控件"。</li>
+</ul>
+
+<h2>第 1 步 · 把 zuma.lua 弄到这台电脑上</h2>
+
+<h3>方式 A（最省事，推荐先试）：直接下载</h3>
+<p>手机上我已经开好了下载服务。在同一 WiFi 下，用这台电脑的浏览器打开：</p>
+<p>
+  <a class="btn" href="../out/zuma.lua" download="zuma.lua">下载 zuma.lua</a>
+  <a class="btn alt" href="./">打开这个文件夹</a>
+</p>
+<p class="muted">如果打不开，说明电脑和手机不在同一个 WiFi（或者机房 WiFi 开了"客户端隔离"）。
+那就回到手机上跟 DSH 说一句"开隧道"，它会给你一个公网网址，用那个网址再下载一次。</p>
+
+<h3>方式 B：从 GitHub 拿</h3>
+<p>仓库是 <code>ihamn/zuma</code>。文件在 <code>miliastra/out/zuma.lua</code>，点 Raw 就能另存为。</p>
+
+<div class="box warn">
+  <div class="big">⚠ 千万别"打开 zuma.lua 直接复制内容粘贴"</div>
+  86 KB 手粘很容易缺一段，而且缺了对不齐的地方<b>不会报错</b>，只会"跑起来怪怪的"。
+  要的是一个<b>真的文件</b>，所以用下载 / 另存为。
+</div>
+
+<h2>第 2 步 · 在千星沙箱里建"空壳"</h2>
+<p>官方术语照着抄，别自己猜名字（括号里是官方文档里的原词）：</p>
+
+<h3>2.1 建客户端控件容器画布</h3>
+<ol>
+  <li>打开<b>千星沙箱</b>，进到你的关卡。</li>
+  <li>找到<b>客户端控件</b>相关入口，<span class="k">新增客户端控件容器</span>，然后<span class="k">编辑客户端控件容器画布</span>。</li>
+  <li class="muted">⚠ 不要把东西放在"主屏"里 —— 主屏里的控件<b>不能</b>被脚本动态创建，会直接失败。</li>
+</ol>
+
+<h3>2.2 建 4 个客户端控件模板</h3>
+<p>在画布里<span class="k">创建客户端控件</span>，建这 4 个，每个都<b>存为模板</b>，然后记下它的<b>控件模板索引</b>（一个数字，后面要填）：</p>
+<table>
+  <tr><th>序号</th><th>建什么</th><th>干什么用</th><th>建议尺寸</th></tr>
+  <tr><td>①</td><td>图片控件</td><td>一颗球（也是弹药、玩区容器的模板）</td><td>圆形，别设死尺寸，脚本会改</td></tr>
+  <tr><td>②</td><td>文本框控件</td><td>分数 / 命 / 提示 / 诊断行</td><td>随意，脚本会改</td></tr>
+  <tr><td>③</td><td>光标检测区域控件</td><td>接鼠标点击（瞄准开火）</td><td>随意，脚本会铺满</td></tr>
+  <tr><td>④</td><td>容器节点控件</td><td>玩区容器（所有东西挂在它下面）</td><td>随意，脚本会铺满</td></tr>
+</table>
+<p class="muted">③④ 嫌麻烦可以先不建：脚本允许它们复用 ① 的模板索引（下面变量表里有写默认值）。但<b>光标检测区域建议单独建</b>，不然点击可能收不到。</p>
+
+<h3>2.3 把脚本挂上去</h3>
+<ol>
+  <li>在画布里建一个控件（就用 ① 的模板），<b>它就是你脚本的挂载点</b>。</li>
+  <li>选中它，打开<b>脚本页签</b>，点<span class="k">添加脚本</span>。</li>
+</ol>
+
+<h2>第 3 步 · 让脚本找到那个下载下来的文件</h2>
+<p>官方说法是"脚本需要与本地文件关联"：</p>
+<ol>
+  <li>进<b>客户端脚本资源管理器</b> → <b>客户端脚本映射</b>文件夹。</li>
+  <li>右键 → <span class="k">新建脚本映射</span>。</li>
+  <li>右键它 → <span class="k">编辑脚本映射路径</span> → <span class="k">选择与脚本映射关联的本地文件</span> → 选<b>第 1 步下载的那个 zuma.lua</b>。</li>
+  <li>回到第 2.3 步的<b>脚本页签</b>，<span class="k">添加脚本</span>，选刚建的这个映射。</li>
+</ol>
+<div class="box warn">
+  <div class="big">⚠ 这一步是"必须建立映射"</div>
+  官方原话：<b>"只有在千星沙箱里建立了映射的 lua 文件才会被打包上传"</b>。
+  只把文件放本地、没建映射，试玩时脚本根本不会跑 —— 表现就是"一片空白，啥也没有"。
+</div>
+
+<h2>第 4 步 · 填脚本变量（就这一张表）</h2>
+<p>进<b>客户端脚本资源管理器</b> → 右键那个客户端脚本 → <span class="k">编辑脚本变量</span>。按表填，<b>不填的会用括号里的默认值</b>：</p>
+<table>
+  <tr><th>变量名</th><th>填什么</th><th>默认</th></tr>
+  <tr><td><code>levelIndex</code></td><td>从第几关开始，1 = ① 配对（最简单）</td><td>1</td></tr>
+  <tr><td><code>ballPrefab</code></td><td>模板① 的控件模板索引</td><td>1</td></tr>
+  <tr><td><code>hudPrefab</code></td><td>模板② 的控件模板索引</td><td>2</td></tr>
+  <tr><td><code>cursorPrefab</code></td><td>模板③ 的控件模板索引</td><td>3</td></tr>
+  <tr><td><code>playPrefab</code></td><td>模板④ 的控件模板索引（不建就填① 的）</td><td>= ballPrefab</td></tr>
+  <tr><td><code>shotPrefab</code></td><td>弹药控件模板索引（不建就填① 的）</td><td>= ballPrefab</td></tr>
+  <tr><td><code>ballCount</code></td><td>球池大小，先小一点好排错</td><td>96</td></tr>
+  <tr><td><code>shotCount</code></td><td>弹药池大小</td><td>8</td></tr>
+  <tr><td><code>seed</code></td><td>随机种子，换个数就是另一局</td><td>12345</td></tr>
+  <tr><td><code>autoNext</code></td><td>过关自动下一关，0 = 不自动</td><td>1</td></tr>
+  <tr><td><code>diag</code></td><td><b>屏幕左下角那行诊断字，排错时别关</b>；正式发布再设 0</td><td>1</td></tr>
+</table>
+<div class="box">
+  <div class="big">那行诊断字是干什么的</div>
+  我在你手机上，<b>看不到你的屏幕</b>。左下角那行会显示
+  <code>帧/关卡/球数/控件数/状态</code>；一旦出错会变成 <code>!! 具体原因</code>。
+  <b>出问题时把那行字念给我，我就知道卡在哪一步了。</b>
+</div>
+
+<h2>第 5 步 · 试玩</h2>
+<ol>
+  <li>保存，点<b>试玩</b>。</li>
+  <li>应该看到：一排彩色的球、左上角"分数 0"、右上角"命 3"、底部是这一关的说明。</li>
+  <li>鼠标移动 = 瞄准，<b>按住左键 = 连发</b>。</li>
+  <li><kbd>Tab</kbd> 切模式（配对 / 加球），<kbd>空格</kbd> 换手里那颗，<kbd>R</kbd> 重开本关。</li>
+</ol>
+
+<h2>第 6 步 · 出问题怎么办（对号入座）</h2>
+<table>
+  <tr><th>你看到的</th><th>大概是什么</th><th>怎么办</th></tr>
+  <tr><td>一片空白，诊断行也没有</td><td>脚本没跑起来</td><td>脚本映射没建 / 没在脚本页签里添加 / 挂在了主屏上</td></tr>
+  <tr><td>诊断行写 <code>!! 找不到挂载控件…</code></td><td>挂载点不对</td><td>把脚本挂到<b>客户端控件</b>上，别挂主屏</td></tr>
+  <tr><td><code>!! 球控件创建失败…</code></td><td>模板索引没填 / 索引填错 / 这个控件不能动态创建</td><td>核对 <code>ballPrefab</code>；控件别放在主屏、别放在模板控件的子节点下</td></tr>
+  <tr><td><code>!! 创建光标检测区域失败…</code></td><td><code>cursorPrefab</code> 不对</td><td>改填模板③的索引</td></tr>
+  <tr><td>有球，但鼠标点了没反应</td><td>点击没落到光标检测区域上</td><td>确认按了<b>鼠标左键</b>；确认模板③是个"光标检测区域"控件</td></tr>
+  <tr><td>球都挤在中间 / 位置很怪</td><td>画布尺寸和预期不一样</td><td>把那行诊断字念给我，我据此改坐标换算</td></tr>
+  <tr><td>卡得厉害</td><td>控件太多</td><td>把 <code>ballCount</code> 调到 48 试试，并告诉我帧率感觉</td></tr>
+</table>
+
+<h2>想调什么</h2>
+<ul>
+  <li><b>换关卡</b>：<code>levelIndex</code> 填 1~11（1~7 是新手关，8~11 是螺旋/交叉桥/无尽）。</li>
+  <li><b>球太多/太少</b>：<code>ballCount</code>。</li>
+  <li><b>要改规则、改数值、加关卡</b>：不要在编辑器里改（那改不动，逻辑在脚本里）。
+      回手机上跟我说就行 —— 源码在 <code>miliastra/lua/src/</code>，改完重新打包只要一条命令。</li>
+</ul>
+
+<hr>
+<p class="muted">
+  出处：这份手册的操作步骤全部来自官方《客户端控件和客户端脚本》
+  （<code>mhbgxf0nynww</code>）与《客户端控件 API 文档》（<code>mhtakr07vej4</code>），
+  术语用的是文档原词。完整考证见 <code>miliastra/docs/03-考证-Lua客户端脚本.md</code>，
+  施工图见 <code>miliastra/docs/05-移植方案.md</code>。
+</p>
+
+</div>
+</html>
