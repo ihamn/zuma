@@ -4,6 +4,9 @@
 // 里面有 zuma.lua + 操作手册 + 说明。而 zip 里的 zuma.lua 必须是**刚生成的那一份**，
 // 所以这一步接在 bundle-lua 后面跑（run-all 里已接好），不会放馊。
 //
+// ★ zip 用**固定时间戳**：不然每次 run-all 生成的 zip 字节都不同，
+//   仓库会永远显示"有改动"，没法判断到底改了什么。
+//
 // 用法：node miliastra/tools/pack-pc.mjs
 
 import fs from 'node:fs';
@@ -23,12 +26,13 @@ if (!fs.existsSync(MANUAL)) throw new Error('操作手册不存在：' + MANUAL)
 const luaBytes = fs.readFileSync(LUA);
 const sha = crypto.createHash('sha256').update(luaBytes).digest('hex');
 
-const readme = [
+const readmePath = path.join(PC, 'README.txt');
+fs.writeFileSync(readmePath, [
   '祖玛 · 千星奇域移植 —— 电脑端要用的东西',
   '=====================================',
   '',
   'zuma.lua        要上传到千星沙箱的脚本（14 个模块打成一个文件）',
-  'manual.html     用浏览器打开，照着做就行（本文件就是那份手册）',
+  'manual.html     用浏览器打开，照着做就行',
   '',
   '三步：',
   ' 1. 把 zuma.lua 存到这台电脑上一个**你自己找得到**的位置',
@@ -36,33 +40,33 @@ const readme = [
   ' 3. 卡住时看手册最后的"出问题怎么办"对照表；',
   '    或者把游戏画面左下角那行诊断字念给我',
   '',
-  '校验（可选）：zuma.lua 的大小应该是 ' + luaBytes.length + ' 字节，',
+  '校验（可选）：zuma.lua 应该是 ' + luaBytes.length + ' 字节，',
   '              sha256 = ' + sha,
   '',
   '注意：云电脑重启后文件可能被清空。把下载网址收藏起来，下次重新下。',
   '',
-].join('\n');
-fs.writeFileSync(path.join(PC, 'README.txt'), readme);
+].join('\n'));
 
-// 用 python 的 zipfile：本机 zip 命令不一定有，而且中文文件名要 UTF-8 标志位
+// 用 python 的 zipfile：本机不一定有 zip 命令，而且中文文件名要 UTF-8 标志位
 const py = [
   'import zipfile, os, sys',
   'pc = sys.argv[1]',
   'out = sys.argv[2]',
   'readme = sys.argv[3]',
-  "FIXED = (2026, 1, 1, 0, 0, 0)   # ★ 固定时间戳：否则每次 run-all 生成的 zip 都不一样，仓库永远脏",
-  "def add(z, path, name):",
-  "    zi = zipfile.ZipInfo(name, date_time=FIXED)",
-  "    zi.compress_type = zipfile.ZIP_DEFLATED",
-  "    zi.external_attr = 0o644 << 16",
-  "    z.writestr(zi, open(path, 'rb').read())",
-  "with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:",
-  "    add(z, os.path.join(pc, '..', 'out', 'zuma.lua'), 'zuma.lua')",
-  "    add(z, os.path.join(pc, 'manual.html'), 'manual.html')",
-  "    add(z, readme, 'README.txt')","
-  "print(os.path.getsize(out))",
+  'FIXED = (2026, 1, 1, 0, 0, 0)',
+  'def add(z, p, name):',
+  '    zi = zipfile.ZipInfo(name, date_time=FIXED)',
+  '    zi.compress_type = zipfile.ZIP_DEFLATED',
+  '    zi.external_attr = 0o644 << 16',
+  '    with open(p, "rb") as f:',
+  '        z.writestr(zi, f.read())',
+  'with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:',
+  '    add(z, os.path.join(pc, "..", "out", "zuma.lua"), "zuma.lua")',
+  '    add(z, os.path.join(pc, "manual.html"), "manual.html")',
+  '    add(z, readme, "README.txt")',
+  'print(os.path.getsize(out))',
 ].join('\n');
 
-const size = execFileSync('python3', ['-c', py, PC, OUT, path.join(PC, 'README.txt')], { encoding: 'utf8' }).trim();
+const size = execFileSync('python3', ['-c', py, PC, OUT, readmePath], { encoding: 'utf8' }).trim();
 console.log('打包电脑端：pc/zuma-pc.zip（' + size + ' 字节）');
 console.log('  zuma.lua：' + luaBytes.length + ' 字节  sha256=' + sha.slice(0, 16) + '…');
