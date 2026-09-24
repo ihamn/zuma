@@ -50,10 +50,16 @@ const py = [
   'pc = sys.argv[1]',
   'out = sys.argv[2]',
   'readme = sys.argv[3]',
+  "FIXED = (2026, 1, 1, 0, 0, 0)   # ★ 固定时间戳：否则每次 run-all 生成的 zip 都不一样，仓库永远脏",
+  "def add(z, path, name):",
+  "    zi = zipfile.ZipInfo(name, date_time=FIXED)",
+  "    zi.compress_type = zipfile.ZIP_DEFLATED",
+  "    zi.external_attr = 0o644 << 16",
+  "    z.writestr(zi, open(path, 'rb').read())",
   "with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:",
-  "    z.write(os.path.join(pc, '..', 'out', 'zuma.lua'), 'zuma.lua')",
-  "    z.write(os.path.join(pc, 'manual.html'), 'manual.html')",
-  "    z.write(readme, 'README.txt')",
+  "    add(z, os.path.join(pc, '..', 'out', 'zuma.lua'), 'zuma.lua')",
+  "    add(z, os.path.join(pc, 'manual.html'), 'manual.html')",
+  "    add(z, readme, 'README.txt')","
   "print(os.path.getsize(out))",
 ].join('\n');
 
