@@ -33,6 +33,7 @@ fs.writeFileSync(readmePath, [
   '',
   'zuma.lua        要上传到千星沙箱的脚本（14 个模块打成一个文件）',
   'manual.html     用浏览器打开，照着做就行',
+  'hello.lua       最小验证脚本：先用它确认管线通了，再上 zuma.lua',
   '',
   '三步：',
   ' 1. 把 zuma.lua 存到这台电脑上一个**你自己找得到**的位置',
@@ -63,6 +64,7 @@ const py = [
   'with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:',
   '    add(z, os.path.join(pc, "..", "out", "zuma.lua"), "zuma.lua")',
   '    add(z, os.path.join(pc, "manual.html"), "manual.html")',
+  '    add(z, os.path.join(pc, "hello.lua"), "hello.lua")',
   '    add(z, readme, "README.txt")',
   'print(os.path.getsize(out))',
 ].join('\n');
