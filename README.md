@@ -135,7 +135,12 @@
 - 表现层 / 输入层 / 脚本生命周期写完，**假宿主无头测试 133 项**通过（含打包产物端到端）
 - 一条命令产出上传用的单文件：`node miliastra/tools/bundle-lua.mjs` → `miliastra/out/zuma.lua`
 
-**要在电脑上的千星沙箱里把它跑起来，看这份手册：**
+**要在电脑（含云电脑）上把它跑起来**，一个链接下到一整包（脚本 + 手册 + 说明）：
+
+    https://cdn.jsdelivr.net/gh/ihamn/zuma@main/miliastra/pc/zuma-pc.zip
+
+（jsDelivr CDN，国内一般比 GitHub 本尊好连；备用镜像见手册里的方式 B。）
+解压后双击 `manual.html` 就是下面这份手册：
 [`miliastra/pc/操作手册.html`](miliastra/pc/操作手册.html)（浏览器直接打开）。
 移植的现状与施工图见 [`miliastra/README.md`](miliastra/README.md) 与
 [`miliastra/docs/05-移植方案.md`](miliastra/docs/05-移植方案.md)。

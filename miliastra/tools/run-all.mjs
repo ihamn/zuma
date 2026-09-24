@@ -21,7 +21,8 @@ const STEPS = [
   ['bundle-lua.mjs', '打包单文件 Lua（上传到千星奇域用）'],
   ['export-levels.mjs', '导出关卡数据（levels.js -> lua/src/levels_data.lua）'],
   ['parity.mjs', 'JS<->Lua 对拍（移植正确性的唯一证据）'],
-  ['test-lua.mjs', 'Lua 侧测试（假宿主 + 表现层 + 输入层 + 整关）']
+  ['test-lua.mjs', 'Lua 侧测试（假宿主 + 表现层 + 输入层 + 整关）'],
+  ['pack-pc.mjs', '打包电脑端压缩包（zuma.lua + 操作手册）']
 ];
 
 let bad = 0;
