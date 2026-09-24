@@ -108,6 +108,21 @@
 
 ---
 
+## 在这台手机上用 git
+
+远程仓库：<https://github.com/ihamn/zuma>（SSH 走 `ssh.github.com:443`，密钥在 `~/.ssh/id_ed25519`，已配好）。
+
+    source tools/gitenv.sh      # 必须先 source，见下
+    git status
+
+两个 Android 特有的坑，都写在 `tools/gitenv.sh` 的注释里：
+
+1. `/storage` 是 **FUSE 挂载，不支持硬链接**（`ln` 直接 Permission denied），
+   而 git 建对象库要用它 -> 所以用 `--separate-git-dir` 把**对象库放到 $TMPDIR**，
+   工作区仍留在 /storage（你的文件在这）。`.git` 只是一个指向 `$TMPDIR/zuma-git` 的文本文件。
+2. `git add` / `git push` 需要 **hardlink 权限**，在默认沙箱模式下会被拒 —— 这两个命令要提权跑。
+   只读操作（status / log / diff）不需要。
+
 ## 千星奇域移植（miliastra/）
 
 本作正在往**原神千星奇域**移植，工作区在 `miliastra/`。路线是**客户端 Lua 脚本**
