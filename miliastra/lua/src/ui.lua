@@ -798,11 +798,13 @@ function M.sync(ui, sc, st)
         local d2 = 2 * rr
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
         lc.text = tostring(base or '')
-        -- ★ 2026-09-25 【已改回原文】本体是 `bold round(r*1.05)px`（**粗体**），控件设不了粗体，
-        --   所以字号就用与链珠字母、绑定球字母**同一个公式**（V.letterScale = 1.15）。
-        --   ⚠ 别再改成 1.35 / 1.25 那种"放大一号"，更**别加 enableOutline** ——
-        --   那两样一起上会把 12~19px 的字母糊成一团（用户报的"原本 4 是正常的现在修没了，3 也没好"）。
-        lc.fontSize = math.max(8, math.floor(rr * V.letterScale))
+        -- ★ 字号公式与链珠字母、绑定球字母**完全一致**（半径 × V.letterScale = 1.15）——
+        --   这一条是 09-25 "④ 被我改糊"那次的教训，别再整体放大、更别加 enableOutline。
+        -- ★★ 但**加一个下限 15**：③ 预备球是本体里最小的球（半径 bR×0.8 ≈ 10.7 → 只有 12px），
+        --   本体用的是**粗体**、我们设不了粗体，12px 细字在真机（画布 1815×900 → scale=1.0）上
+        --   就是"看不见"。下限 15 = ④ 的自然字号，于是**只抬升比 15 还小的那颗（就是 ③）**，
+        --   链珠（21px）/ 绑定球（15px）/ ④（15px）**一个都不变**。
+        lc.fontSize = math.max(15, math.floor(rr * V.letterScale))
         lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
         setVisible(ui, lc, true)
       end

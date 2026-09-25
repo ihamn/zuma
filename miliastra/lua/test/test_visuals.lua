@@ -269,9 +269,15 @@ do
     '★ 核糖体字母与链珠字母的描边设置一致（都是 false）')
   -- ⚠ 别拿它跟链珠字母比**数值**：两颗球半径不同（链珠 r=19、待发球 r=13.4），
   --   公式一样但算出来不一样。要比就比**公式**：字号 = max(8, floor(球半径 × 1.15))
-  local lr = GAME.ui.loaded[1].sizeDeltaX / 2
-  H.eq(GAME.ui.loadedLetter[1].fontSize, math.max(8, math.floor(lr * 1.15)),
-    '★ 核糖体字母用的是与链珠字母同一个公式（半径 × 1.15，下限 8）：r=' .. string.format('%.1f', lr))
+  -- 公式 = max(15, floor(半径 × 1.15))：下限 15 只为抬升 ③ 那颗最小的球（半径 10.7 → 12px 看不见），
+  -- ④（15px）/ 链珠（21px）/ 绑定球（15px）都不受影响。
+  local lr1 = GAME.ui.loaded[1].sizeDeltaX / 2
+  local lr2 = GAME.ui.loaded[2].sizeDeltaX / 2
+  H.eq(GAME.ui.loadedLetter[1].fontSize, math.max(15, math.floor(lr1 * 1.15)),
+    '★ ④ 炮口球字母字号 = max(15, r×1.15) = ' .. tostring(GAME.ui.loadedLetter[1].fontSize))
+  H.eq(GAME.ui.loadedLetter[2].fontSize, math.max(15, math.floor(lr2 * 1.15)),
+    '★ ③ 预备球字母字号（下限 15，真机 scale=1 时从 12 抬到 15）= ' .. tostring(GAME.ui.loadedLetter[2].fontSize))
+  H.ok(GAME.ui.loadedLetter[2].fontSize >= 15, '★ ③ 的字号不许低于 15（低于就真机看不见）')
   -- ★★ 建法回到"④ 正常"那一版：字母紧跟两颗待发球建（**在 HUD 之前**），
   --    靠"后建=在上"盖住球和描边即可 —— 不再挪到 M.create 末尾（那笔改动把 ④ 弄糊了）。
   H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[2].Id, '★ 字母建在两颗待发球之后（z 序在上）')
