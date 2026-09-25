@@ -276,9 +276,9 @@ export const CLASSIC_LEVELS = [
     //     自动(≈3 圈) 间距 91.7（空一大截）、5 圈 55.0、**6 圈 45.9（挨住）**、7 圈 39.3（球也贴住）
     //   ⇒ 直接指定 turns（**这才是圈数**）：真机画布 1815x900 下跨度 362，8 圈 ⇒ 圈间距 ≈ 45
     //     正好等于轨道带宽度 ⇒ 圈与圈挨住。（不写 turns 时自动只有 ≈4 圈 ⇒ 间距 ≈90，就是空一大截。）
-    turns: 6,
-    prefill: 44,
-    ballBudget: 96,
+    turns: 4,
+    prefill: 20,
+    ballBudget: 48,
     scoreTarget: Infinity,
   },
 ];
