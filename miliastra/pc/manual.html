@@ -204,16 +204,26 @@ http://10.176.136.109:8080/miliastra/out/zuma.lua &nbsp;（下载文件）</p>
   只把文件放本地、没建映射，试玩时脚本根本不会跑 —— 表现就是"一片空白，啥也没有"。
 </div>
 
-<h2>第 4 步 · 填脚本变量（就这一张表）</h2>
-<p>进<b>客户端脚本资源管理器</b> → 右键那个客户端脚本 → <span class="k">编辑脚本变量</span>。按表填，<b>不填的会用括号里的默认值</b>：</p>
+<h2>第 4 步 · 填脚本变量（<span style="color:#2e7d32">★ 现在一个都不用填</span>）</h2>
+<div class="box ok">
+  <div class="big">★ 模板索引不用你抄：脚本自己认</div>
+  脚本在启动时会用官方 <code>typeof()</code>（"返回运行时类型名称"）挨个试一遍模板索引，
+  <b>认出来是图片/文本框/光标检测区域/容器的就是它</b> —— 探针用完立刻销毁，不占控件数。<br>
+  所以这一页<b>可以整页跳过</b>。日志里会打一行
+  <code>[zuma] 用这套模板索引：球=… 弹药=… 文本=… 光标=… 玩区=…</code>，你可以顺手核对一下。
+</div>
+<p>下面这张表<b>只在两种情况下才需要填</b>：① 自动认错了（比如你建了两个图片控件）；
+② 你想手动指定。进<b>客户端脚本资源管理器</b> → 右键那个客户端脚本 → <span class="k">编辑脚本变量</span>。
+索引从哪看：<b>在编辑器里点一下那个控件，界面上会显示它的"控件模板索引"</b>（一个很大的数字，形如 1073741xxx）。</p>
 <table>
   <tr><th>变量名</th><th>填什么</th><th>默认</th></tr>
   <tr><td><code>levelIndex</code></td><td>从第几关开始，1 = ① 配对（最简单）</td><td>1</td></tr>
-  <tr><td><code>ballPrefab</code></td><td>模板① 的控件模板索引</td><td>1</td></tr>
-  <tr><td><code>hudPrefab</code></td><td>模板② 的控件模板索引</td><td>2</td></tr>
-  <tr><td><code>cursorPrefab</code></td><td>模板③ 的控件模板索引</td><td>3</td></tr>
-  <tr><td><code>playPrefab</code></td><td>模板④ 的控件模板索引（不建就填① 的）</td><td>= ballPrefab</td></tr>
-  <tr><td><code>shotPrefab</code></td><td>弹药控件模板索引（不建就填① 的）</td><td>= ballPrefab</td></tr>
+  <tr><td><code>autoPrefabs</code></td><td>自动认控件模板（<b>保持 1 就别管下面的索引了</b>）</td><td>1</td></tr>
+  <tr><td><code>ballPrefab</code></td><td>球控件的模板索引（<b>留空 = 自动认</b>）</td><td>自动</td></tr>
+  <tr><td><code>hudPrefab</code></td><td>文本框控件的模板索引（留空 = 自动认）</td><td>自动</td></tr>
+  <tr><td><code>cursorPrefab</code></td><td>光标检测区域控件的模板索引（留空 = 自动认）</td><td>自动</td></tr>
+  <tr><td><code>playPrefab</code></td><td>容器节点控件的模板索引（留空 = 自动认）</td><td>自动</td></tr>
+  <tr><td><code>shotPrefab</code></td><td>弹药控件模板索引（不填就跟球一样）</td><td>= ballPrefab</td></tr>
   <tr><td><code>ballCount</code></td><td>球池大小，先小一点好排错</td><td>96</td></tr>
   <tr><td><code>shotCount</code></td><td>弹药池大小</td><td>8</td></tr>
   <tr><td><code>fancy</code></td><td>光晕 / 冷却环 / 动效。<b>哪样看着不对就先设 0</b>，只剩静态画面</td><td>1</td></tr>

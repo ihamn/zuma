@@ -10,11 +10,12 @@
 --
 -- 脚本变量（编辑期填，运行期用 script:GetParam 读；不填就用括号里的默认值）：
 --   levelIndex   从第几关开始（1..11，1 = ① 配对）              [1]
---   ballPrefab   球控件的客户端控件模板索引                      [1]
---   shotPrefab   弹药控件的模板索引（不填则跟球一样）            [= ballPrefab]
---   hudPrefab    文本框控件的模板索引                            [2]
---   cursorPrefab 光标检测区域控件的模板索引                      [3]
---   playPrefab   玩区容器控件的模板索引（不填则跟球一样）        [= ballPrefab]
+--   autoPrefabs  自动认控件模板（下面的索引**一个都不用填**）      [1]
+--   ballPrefab   球控件的客户端控件模板索引（填了就不用自动认）    [自动]
+--   shotPrefab   弹药控件的模板索引（不填则跟球一样）              [= ballPrefab]
+--   hudPrefab    文本框控件的模板索引                              [自动]
+--   cursorPrefab 光标检测区域控件的模板索引                        [自动]
+--   playPrefab   玩区容器控件的模板索引（不填则跟球一样）          [自动]
 --   ballCount    球池大小                                        [96]
 --   shotCount    弹药池大小                                      [8]
 --   fancy        光晕 / 冷却环 / 动效（0 = 只留静态画面）          [1]
@@ -119,6 +120,38 @@ function G.tryBoot()
   G.refreshDiag()
 end
 
+-- ★★ 自动认控件模板：**用户一个变量都不用填**。
+--
+-- 官方文档《客户端控件和客户端脚本》§八：「编辑时，可以通过点击客户端控件查看对应的控件模板索引ID」
+-- —— 也就是说索引是编辑器给的数字，要人去点开看、再抄进脚本变量表。这一步既枯燥又容易抄错
+-- （抄错的后果是"球建不出来"或"点击没反应"）。
+--
+-- 但官方同时提供了 `typeof(value)`（"返回运行时类型名称；用于识别宿主对象"），
+-- 于是可以**自己问**：从索引 1 开始挨个尝试建一个控件，看它的运行时类型名是什么，是图片就是球、
+-- 是文本框就是 HUD、是光标检测区域就是点击区、是容器就是玩区。探针用完立刻销毁（不占控件数）。
+-- 填了脚本变量的以变量为准；没填的用自动认出来的；自动认不出才退回 1/2/3/4。
+local function detectPrefabs(root)
+  local want = {          -- 变量名 -> 类型名里必须出现的关键词
+    ballPrefab = 'Image',
+    hudPrefab = 'TextBox',
+    cursorPrefab = 'Cursor',
+    playPrefab = 'Container',
+  }
+  local found = {}
+  if not (typeof and game.InstantiateClientUIControl and game.DestroyClientUIControl) then return found end
+  for i = 1, 32 do
+    local ok, c = pcall(game.InstantiateClientUIControl, i, root)
+    if ok and c then
+      local t = typeof(c)
+      for k, word in pairs(want) do
+        if found[k] == nil and type(t) == 'string' and t:find(word, 1, true) then found[k] = i end
+      end
+      pcall(game.DestroyClientUIControl, c)      -- 探针不留痕
+    end
+  end
+  return found
+end
+
 -- 真正干活的初始化。任何一步失败都会被 OnInit 的 pcall 接住并显示在屏幕上。
 function G.boot()
   local w, h = G.canvas.w, G.canvas.h
@@ -135,9 +168,26 @@ function G.boot()
   root:SetActive(true)
   say('挂载点 = %s', tostring(root))
 
+  -- ★ 先把模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）
+  local auto = {}
+  if param('autoPrefabs', 1) ~= 0 then
+    auto = detectPrefabs(root)
+    say('自动认模板：球=%s 文本=%s 光标=%s 容器=%s', tostring(auto.ballPrefab), tostring(auto.hudPrefab),
+      tostring(auto.cursorPrefab), tostring(auto.playPrefab))
+  end
+  G.prefabs = {
+    ball = param('ballPrefab', auto.ballPrefab or 1),
+    hud = param('hudPrefab', auto.hudPrefab or 2),
+    cursor = param('cursorPrefab', auto.cursorPrefab or 3),
+    play = param('playPrefab', auto.playPrefab or auto.ballPrefab or 1),
+  }
+  G.prefabs.shot = param('shotPrefab', G.prefabs.ball)
+  say('用这套模板索引：球=%d 弹药=%d 文本=%d 光标=%d 玩区=%d', G.prefabs.ball, G.prefabs.shot,
+    G.prefabs.hud, G.prefabs.cursor, G.prefabs.play)
+
   -- ★★ 诊断框**第一个建**：万一后面哪一步炸了，屏幕上还有地方显示原因。
   --   （这一条很关键：我在手机上看不到你的屏幕，那行字就是唯一的线索）
-  local dok, dc = pcall(game.InstantiateClientUIControl, param('hudPrefab', 2), root)
+  local dok, dc = pcall(game.InstantiateClientUIControl, G.prefabs.hud, root)
   if dok and dc then
     G.diagControl = dc
     dc:SetActive(true)
@@ -153,16 +203,21 @@ function G.boot()
   say('诊断框 = %s', tostring(G.diagControl))
 
   -- 玩区容器：占满画布、居中
-  local playPrefab = param('playPrefab', param('ballPrefab', 1))
-  G.area = game.InstantiateClientUIControl(playPrefab, root)
-  if not G.area then error('创建玩区容器失败：playPrefab = ' .. tostring(playPrefab)) end
+  G.area = game.InstantiateClientUIControl(G.prefabs.play, root)
+  if not G.area then
+    error('创建玩区容器失败：模板索引 = ' .. tostring(G.prefabs.play)
+      .. '（容器节点控件的模板索引；不想填就把它建成容器模板，脚本会自己认）')
+  end
   G.area:SetActive(true)
   G.area:SetAnchoredPosition(0, 0)
   G.area:SetSizeDelta(w, h)
 
   -- 光标检测区域：铺满画布
-  G.cursorArea = game.InstantiateClientUIControl(param('cursorPrefab', 3), G.area)
-  if not G.cursorArea then error('创建光标检测区域失败：cursorPrefab = ' .. tostring(param('cursorPrefab', 3))) end
+  G.cursorArea = game.InstantiateClientUIControl(G.prefabs.cursor, G.area)
+  if not G.cursorArea then
+    error('创建光标检测区域失败：模板索引 = ' .. tostring(G.prefabs.cursor)
+      .. '（要建一个"光标检测区域"控件并存为模板）')
+  end
   G.cursorArea:SetActive(true)
   G.cursorArea:SetAnchoredPosition(0, 0)
   G.cursorArea:SetSizeDelta(w, h)
@@ -171,21 +226,21 @@ function G.boot()
   G.ui = UI.create({
     parent = G.area,
     canvas = G.canvas,
-    ballPrefab = param('ballPrefab', 1),
+    ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
-    shotPrefab = param('shotPrefab', param('ballPrefab', 1)),
+    shotPrefab = G.prefabs.shot,
     shotCount = param('shotCount', 8),
     -- 连线 / 轨道 / 洞穴都用**球的模板**（拉长就是一根棒、放大就是一个洞）—— 编辑器里不用多建模板
-    linkPrefab = param('linkPrefab', param('ballPrefab', 1)),
+    linkPrefab = param('linkPrefab', G.prefabs.ball),
     linkCount = param('linkCount', param('ballCount', 96) * 2),
-    cavePrefab = param('cavePrefab', param('ballPrefab', 1)),
+    cavePrefab = param('cavePrefab', G.prefabs.ball),
     mergeCount = param('mergeCount', 8),
     -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
     fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
     track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
     trackSegments = param('trackSegments', 64),
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
-    hudPrefab = param('hudPrefab', 2),
+    hudPrefab = G.prefabs.hud,
     hud = buildHudSpecs(w, h),
   })
 

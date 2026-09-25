@@ -320,6 +320,27 @@ function METHODS:SimulateCursorClick()
   return self
 end
 
+-- 假宿主里的 typeof：真机是官方全局函数（文档："返回运行时类型名称；用于识别宿主对象"），
+-- 客户端控件返回 ClientUIxxxControl。ui/game 靠它**自动认模板**，所以这里必须照真机给。
+local TYPEOF_NAME = {
+  image = 'ClientUIImageControl',
+  textbox = 'ClientUITextBoxControl',
+  cursorarea = 'ClientUICursorEventAreaControl',
+  cursor = 'ClientUICursorEventAreaControl',
+  container = 'ClientUIContainerControl',
+  root = 'ClientUIContainerControl',
+  button = 'ClientUIPresetButtonControl',
+  grid = 'ClientUIGridScrollerControl',
+  keyhint = 'ClientUIKeyHintControl',
+  animation = 'ClientUIAnimationControl',
+}
+local function typeofOf(v)
+  if type(v) == 'table' and rawget(v, '__kind') then
+    return TYPEOF_NAME[rawget(v, '__kind')] or 'ClientUIBaseControl'
+  end
+  return type(v)
+end
+
 local CONTROL_MT = {}
 
 -- 只读字段 -> 内部存储名（存在内部名下，写同名字段才会撞上 __newindex）
@@ -677,7 +698,11 @@ function M.newHost(opts)
     if host.phase == 'init' or host.phase == 'destroy' then return nil end
     -- 测试用：把某个模板索引标成"创建必定失败"，用来验证错误能不能显示到屏幕上
     if host.failPrefabs and host.failPrefabs[prefabIndex] then return nil end
-    local kind = host.prefabs[prefabIndex] or 'image'
+    -- ★ 不存在的模板索引就返回 nil（真机就是这样）：
+    --   原来这里对未知索引**硬造一个图片控件**，于是"自动认模板"在本地永远认不出错 ——
+    --   真机上索引填错了会直接建不出来，本地必须一样。
+    local kind = host.prefabs[prefabIndex]
+    if not kind then return nil end
     local c = host.newControl(kind, prefabIndex, nil, parent)
     host.stats.instantiated = host.stats.instantiated + 1
     return c
@@ -856,6 +881,7 @@ function M.install(host)
   _G.Enum = Enum
   _G.Color = Color
   _G.script = host.scriptObj
+  _G.typeof = typeofOf
   return host
 end
 
