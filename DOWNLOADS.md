@@ -16,11 +16,11 @@ https://github.com/ihamn/zuma
 
 ## 直链（在电脑浏览器里粘这一行就下）
 
-**① 游戏要用的包** — 63,881 字节
+**① 游戏要用的包** — 64,419 字节
 ```
 https://ghproxy.net/https://raw.githubusercontent.com/ihamn/zuma/main/miliastra/pc/zuma-pc.zip
 ```
-里面有 4 个文件：`zuma.lua`（143,986）、`hello.lua`（5,141）、`manual.html`（28,121）、`README.txt`（837）
+里面有 4 个文件：`zuma.lua`（144,888）、`hello.lua`（5,141）、`manual.html`（28,870）、`README.txt`（837）
 
 **② DSH 迁移包** — 18,714,097 字节（17.8 MB）
 ```
@@ -59,11 +59,11 @@ https://cdn.jsdelivr.net/gh/ihamn/zuma@main/
 
 | 文件 | 字节数 | 属性里显示约 | sha256 |
 |---|---|---|---|
-| `zuma-pc.zip` | 63,881 | 62.4 KB | `2e3e4d68c7bb15ff891ded5c2769c1b11d8ca2ba7b8bad2d97baa11ecb611fdf` |
+| `zuma-pc.zip` | 64,419 | 62.9 KB | `0abd47283ed511570aead020cf21a70a02f80657e0a2e4ba386c0fe9a1aa5a66` |
 | `dsh-session.zip` | 18,714,097 | 17.8 MB | `233ccbc40484ac58d891ed1798ef2a354c249fb7332e983eab3f9b850f1c51a8` |
-| `zuma.lua` | 143,986 | 140.6 KB | `f792221a2c84456750e945d70459afb0315e006635e1f4ef50baa1863f3fc0ab` |
+| `zuma.lua` | 144,888 | 141.5 KB | `e345c6a6e430abefbd0fa40dfe9c4affee22795b8505572cc530aa3ea819888d` |
 | `hello.lua` | 5,141 | 5.02 KB | `3d6f67feaf7298c94ac7511f82776bf94fbe81510ef9288f521c8010b32dc9e8` |
-| `manual.html` | 28,121 | 27.5 KB | `610e4a7ebebb962ee820c0cf6b555a472b347c99c3909040fe332fd39d9d6dbc` |
+| `manual.html` | 28,870 | 28.2 KB | `83596bd376348f64341cc7bc537086d67ecbadf279e4e8b660c963afd9a0a076` |
 | `README.txt` | 837 | 0.82 KB | `18154af54fc0e0322f12f1339a5c92cd5e769adbad6cde544514567d137e7399` |
 | `restore.ps1` | 2,960 | 2.89 KB | `cf6875c5e7ed33b71ff2a022ef6e4b715ddb802adf7fcc359bd2dc6a7d0b6984` |
 

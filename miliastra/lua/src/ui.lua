@@ -255,6 +255,8 @@ function M.create(opts)
   ui.artAny = opts.artAny or ui.art['A'] or ui.art[CFG.BASES[1]]
   -- 棒（轨道/连线/瞄准线）专用素材：**方图**最好（圆图拉长会鼓出来）
   ui.artBar = opts.artBar or ui.artAny
+  -- 环（洞穴那几圈）专用素材：**空心圆**（实心圆装成环要叠层，效果差）
+  ui.artRing = opts.artRing or ui.artAny
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -507,7 +509,9 @@ function M.sync(ui, sc, st)
         for i = 1, #ui.caveGlow do
           local k = 1 + 0.16 * i          -- 1.16 / 1.32 / 1.48：贴着本体那一圈，不要铺开一大片
           local glow = ui.caveGlow[i]
-          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1])
+          -- ★ 用**空心圆**素材（ui.artRing）：洞口本来就是"环"，空心圆染红正好；
+          --   实心圆在这里得靠叠层+透明度装成环，效果差一截。
+          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1], ui.artRing)
           -- 呼吸：慢慢放大缩小，让"洞口"看着是活的
           setScaleRaw(glow, 1 + 0.05 * math.sin((ui.t + i * 0.35) * 2.4))
         end

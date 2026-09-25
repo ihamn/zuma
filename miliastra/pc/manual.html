@@ -181,15 +181,16 @@ http://10.176.136.109:8080/miliastra/out/zuma.lua &nbsp;（下载文件）</p>
     <tr><td><b>控件模板索引</b></td><td>大数字，如 <code>1073741852</code></td>
         <td>脚本变量 <code>ballPrefab</code> 等（而且脚本会自动认，不用填）</td></tr>
     <tr><td><b>资产号</b>（素材 id）</td><td>小数字，如 <code>100002</code></td>
-        <td><code>SetImage</code> 用 —— 脚本默认已经填好 <b>100002</b>（一张白圆图）</td></tr>
+        <td><code>SetImage</code> 用 —— 脚本三个默认值都填好了（见下表），<b>照默认做就什么都不用填</b></td></tr>
   </table>
     <b>需要两张图</b>（都可从素材库里找/自己传）：
   <table>
     <tr><th>用在哪</th><th>要什么形状</th><th>脚本变量</th></tr>
-    <tr><td>球面、光晕、核糖体、背板</td><td><b>纯白圆形</b></td><td><code>artImage=资产号</code>（默认 100002）</td></tr>
+    <tr><td>球面、光晕、核糖体、背板</td><td><b>纯白实心圆</b></td><td><code>artImage=资产号</code>（<b>默认 100002</b>）</td></tr>
     <tr><td>轨道 / 配对连线 / 瞄准线（拉成长条）</td>
-        <td><b>纯白正方形</b>（越小越好，1×1 或 8×8，<b>直角、无描边</b>；圆图拉长会鼓出来）</td>
-        <td><code>artBar=资产号</code>（不填就跟 <code>artImage</code> 一样）</td></tr>
+        <td><b>纯白正方形</b>（越小越好，直角、无描边；圆图拉长会鼓出来）</td>
+        <td><code>artBar=资产号</code>（<b>默认 100001</b>）</td></tr>
+    <tr><td>洞穴那几圈红环</td><td><b>纯白空心圆</b></td><td><code>artRing=资产号</code>（<b>默认 100006</b>）</td></tr>
   </table>
   换图就填脚本变量 <code>artImage=你的资产号</code>；想 5 种碱基各一张图就
   <code>art=A:资产号,U:…,G:…,C:…,T:…</code>。<br>

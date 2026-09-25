@@ -2403,6 +2403,8 @@ function M.create(opts)
   ui.artAny = opts.artAny or ui.art['A'] or ui.art[CFG.BASES[1]]
   -- 棒（轨道/连线/瞄准线）专用素材：**方图**最好（圆图拉长会鼓出来）
   ui.artBar = opts.artBar or ui.artAny
+  -- 环（洞穴那几圈）专用素材：**空心圆**（实心圆装成环要叠层，效果差）
+  ui.artRing = opts.artRing or ui.artAny
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -2655,7 +2657,9 @@ function M.sync(ui, sc, st)
         for i = 1, #ui.caveGlow do
           local k = 1 + 0.16 * i          -- 1.16 / 1.32 / 1.48：贴着本体那一圈，不要铺开一大片
           local glow = ui.caveGlow[i]
-          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1])
+          -- ★ 用**空心圆**素材（ui.artRing）：洞口本来就是"环"，空心圆染红正好；
+          --   实心圆在这里得靠叠层+透明度装成环，效果差一截。
+          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1], ui.artRing)
           -- 呼吸：慢慢放大缩小，让"洞口"看着是活的
           setScaleRaw(glow, 1 + 0.05 * math.sin((ui.t + i * 0.35) * 2.4))
         end
@@ -3450,11 +3454,18 @@ function G.boot()
   --   否则每个图片控件都画成"?"（球、轨道、中央核糖体全中招）。
   --   优先级：art=A:id,U:id,...（按碱基分别指定）> artImage=<id> > 画布里借一张 > 默认值。
   --   ⚠ 注意区分两个数字：**图片控件模板索引**（形如 1073741852）不是素材 id；
-  --     素材 id 是编辑器里那张图的"**资产号**"（用户那张白圆图 = 100002）。
-  local DEFAULT_ART = 100002
+  --     素材 id 是编辑器里那张图的"**资产号**"。
+  --   ★ 用户在编辑器里的三张图（2026-09-25 报的资产号）：
+  --       100002 实心圆 → 球面/光晕/核糖体本体/背板
+  --       100001 方块   → 轨道 / 配对连线 / 瞄准线（拉成长条，圆图会鼓出来）
+  --       100006 空心圆 → 洞穴那几圈红环（本来就是"环"）
+  local DEFAULT_ART = 100002       -- 实心圆
+  local DEFAULT_BAR = 100001       -- 方块
+  local DEFAULT_RING = 100006      -- 空心圆
   local art = {}
   local artAny = nil          -- 全局兜底资产号（光晕/核糖体/背板等不分碱基的控件用它）
-  local artBar = tonumber(tostring(param('artBar', '')))   -- 棒专用（轨道/连线/瞄准线）：**方图**最合适
+  local artBar = tonumber(tostring(param('artBar', ''))) or DEFAULT_BAR    -- 棒（轨道/连线/瞄准线）
+  local artRing = tonumber(tostring(param('artRing', ''))) or DEFAULT_RING -- 环（洞穴）
   do
     local spec = param('art', '')
     if type(spec) == 'string' and spec ~= '' then
@@ -3480,7 +3491,7 @@ function G.boot()
         artAny = one
         for i = 1, #CFG.BASES do art[CFG.BASES[i]] = one end
         say('★ 球面素材资产号 = %s（全部碱基共用；想分别指定就填 art=A:id,U:id,...）', tostring(one))
-      if artBar then say('★ 棒（轨道/连线）专用资产号 = %s', tostring(artBar)) end
+      say('★ 素材：实心圆=%s 方块(轨道/连线)=%s 空心圆(洞穴)=%s', tostring(one), tostring(artBar), tostring(artRing))
       end
     end
     if next(art) then
@@ -3538,6 +3549,7 @@ function G.boot()
     art = art,
     artAny = artAny,
     artBar = artBar,
+    artRing = artRing,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

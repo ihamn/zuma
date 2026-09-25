@@ -134,7 +134,9 @@ do
   h9.scriptObj.object = h9.root
   h9.mount(GAME)
   H.eq(GAME.error, nil, '不配素材也能跑：' .. tostring(GAME.error))
-  H.eq(GAME.ui.art['A'], 100002, '★ 不配 art → 用默认资产号 100002（白圆图）')
+  H.eq(GAME.ui.art['A'], 100002, '★ 不配 art → 用默认资产号 100002（实心圆）')
+  H.eq(GAME.ui.artBar, 100001, '★ 棒默认用方块 100001（用户给的资产号）')
+  H.eq(GAME.ui.artRing, 100006, '★ 环默认用空心圆 100006')
   H.eq(GAME.ui.artAny, 100002, '兜底资产号也设上了（棒/光晕/核糖体用它）')
   H.truthy((h9.stats.setImage or 0) > 0, '★ 必须真的调了 SetImage（真机不设就全是"?"）')
 end
@@ -227,8 +229,9 @@ do
   MOCK.install(h14)
   h14.scriptObj.object = h14.root
   h14.mount(GAME)
-  H.eq(GAME.ui.artAny, 100002, '球面用 artImage=100002')
-  H.eq(GAME.ui.artBar, 100003, '★ 棒用 artBar=100003（方图）')
+  H.eq(GAME.ui.artAny, 100002, '球面用 artImage=100002（实心圆）')
+  H.eq(GAME.ui.artRing, 100006, '★ 洞穴那几圈用默认空心圆 100006')
+  H.eq(GAME.ui.artBar, 100003, '★ 棒用 artBar=100003（方图）覆盖默认 100001')
 end
 
 H.finish()
