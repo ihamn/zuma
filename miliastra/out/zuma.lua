@@ -2585,7 +2585,10 @@ function M.create(opts)
   --    半透明（留一点关卡场景透出来），有它整局才像"一个界面"而不是浮在半空。
   --    backdrop = 0 可关掉（编辑器里自己摆了底图就用 0）。
   if opts.backdrop ~= 0 then
-    local bg = build(ballPrefab, '背板控件', 1)
+    -- ★ 2026-09-25（奇匠："打底希望是长方形的"）：原来用**球**的素材建背板 ⇒ 屏幕底衬是个**大圆** ✗。
+    --   改用**方块**素材（轨道/连线用的那个 100001；空心圆是洞穴、实心圆是球）
+    --   ⇒ 尺寸设成整屏就是一块**长方形**打底 ✓。
+    local bg = build(linkPrefab, '背板控件', 1)
     setColor(ui, bg, C.backdrop or '#0b1119d9')
     softEdge(bg, false, 0)
     ui.backdrop = bg
