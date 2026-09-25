@@ -2899,10 +2899,19 @@ local function syncEgg(ui, sc, st)
   --   踩过：这里无条件 `setVisible(..., inEgg)` ⇒ 菜单里刚摆好的关卡按钮被这行全藏掉，
   --   屏幕上只剩三个分组标题（出图才看出来）。
   if inEgg then
+    -- ★★ 关键：按钮是**复用菜单控件**的（菜单那几个控件建得比彩蛋的暗幕**早** ✗）
+    --   ⇒ 在"创建顺序 = 前后层级"的平台规则下，它们会被暗幕（94% 不透明）压得完全看不见
+    --   —— 奇匠反馈"无功能按钮"就是这个（折线控件一并提上来，防同类问题）。
+    --   用 SetAsLastSibling 提到最上层（移植侧允许；套 pcall 保证真机上万一不支持也不会崩）。
+    local function raise(c)
+      if c and c.SetAsLastSibling then pcall(c.SetAsLastSibling, c) end
+    end
     for i = 1, #e.btn do
       setVisible(ui, e.btn[i], true)
       setVisible(ui, e.btnLabel[i], true)
+      raise(e.btn[i]); raise(e.btnLabel[i])
     end
+    for i = 1, #e.chart do raise(e.chart[i]) end
   end
   if not inEgg then return end
 
@@ -2943,7 +2952,11 @@ local function syncEgg(ui, sc, st)
     c.fontSize = math.max(13, math.floor(19 * s))
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
-  -- ★★ 折线图（奇匠："不想要柱" ⇒ 回到折线）。
+  -- ★★ 折线图（奇匠："不想要柱" ⇒ 折线）。初始价基准 = 100 元/g（= egg.lua 的 M.PRICE0）。
+  --   ⚠⚠ 这里原来写的是 `M.PRICE0` —— 那是 **egg.lua** 的字段，ui.lua 的 M 里根本不存在 ✗
+  --   ⇒ nil 参与算术直接抛错 ⇒ **syncEgg 从这一行起中断 ⇒ 按钮和折线全都不会被执行**
+  --   = 奇匠反馈的"无功能按钮，无折线图"（一个 nil 造成两个症状）。
+  local BASE = 100
   --   为什么这一版能画出来、上一版不能：上一版的历史**只有 1 个点**（初始点是在第一次报价之后才记的，
   --   种子问题已修 ✓）⇒ 连不成线。现在 egg.lua 开局就播了一个初始价 ✓，且一局 10 分钟 / 3 秒 ≈
   --   **200 个点** ✓ —— 界面按 48 个点的窗口**等距抽样**（多点少段，控件只用 47 段 ✓）。
@@ -2963,7 +2976,7 @@ local function syncEgg(ui, sc, st)
     if lo == nil or v < lo then lo = v end
     if hi == nil or v > hi then hi = v end
   end
-  if lo == nil then lo, hi = M.PRICE0 - 10, M.PRICE0 + 10 end
+  if lo == nil then lo, hi = 100 - 10, 100 + 10 end
   if hi - lo < 2 then hi = lo + 2 end
   local pad = (hi - lo) * 0.12
   lo, hi = lo - pad, hi + pad
@@ -2972,7 +2985,7 @@ local function syncEgg(ui, sc, st)
   local used = 0
   -- 基准线（初始价 100）：用最后一段控件画一条横线，让玩家看得出"现在比开局高还是低"
   if e.chart[#e.chart] then
-    local yb = pyv(M.PRICE0)
+    local yb = pyv(100)
     placeSeg(ui, e.chart[#e.chart], cx, cy, x0, yb, x0 + cw, yb, 2 * s, '#4a5568')
     setVisible(ui, e.chart[#e.chart], true)
   end
