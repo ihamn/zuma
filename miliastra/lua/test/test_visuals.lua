@@ -263,11 +263,22 @@ do
   -- ★ z 序：字母必须**晚于**待发球创建（真机后建的盖在上面）
   H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[1].Id, '★ 字母建在球之后（z 序更靠上）')
   H.ok(GAME.ui.loadedLetter[2].Id > GAME.ui.loaded[2].Id, '★ 预备球字母也建在球之后')
-  -- ★★ 核糖体字母必须与"链珠字母"（真机上显示正常的那套）**机制完全一致**：
-  --    同样无描边、同样不调 SetAsLastSibling（移植侧小聪明，链珠字母从来没用过）。
+  -- ★★ 核糖体字母必须与"链珠字母 / 绑定球字母"（真机上显示正常的那两套）**机制完全一致**：
+  --    同一个字号公式、同样无描边、同样不调 SetAsLastSibling。
   H.eq(GAME.ui.loadedLetter[1].enableOutline, GAME.ui.letter[1].enableOutline,
     '★ 核糖体字母与链珠字母的描边设置一致（都是 false）')
-  H.eq(GAME.ui.loadedLetter[1].siblingMoves or 0, 0, '★ 核糖体字母没有被 SetAsLastSibling 动过')
+  -- ⚠ 别拿它跟链珠字母比**数值**：两颗球半径不同（链珠 r=19、待发球 r=13.4），
+  --   公式一样但算出来不一样。要比就比**公式**：字号 = max(8, floor(球半径 × 1.15))
+  local lr = GAME.ui.loaded[1].sizeDeltaX / 2
+  H.eq(GAME.ui.loadedLetter[1].fontSize, math.max(8, math.floor(lr * 1.15)),
+    '★ 核糖体字母用的是与链珠字母同一个公式（半径 × 1.15，下限 8）：r=' .. string.format('%.1f', lr))
+  -- ★★ 建法回到"④ 正常"那一版：字母紧跟两颗待发球建（**在 HUD 之前**），
+  --    靠"后建=在上"盖住球和描边即可 —— 不再挪到 M.create 末尾（那笔改动把 ④ 弄糊了）。
+  H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[2].Id, '★ 字母建在两颗待发球之后（z 序在上）')
+  if GAME.ui.hudOrder and #GAME.ui.hudOrder > 0 then
+    H.ok(GAME.ui.loadedLetter[1].Id < GAME.ui.hud[GAME.ui.hudOrder[1]].Id,
+      '★ 字母建在 HUD 文本**之前**（与"④ 正常"那一版的建法一致）')
+  end
 
   -- ★ 大小球配比 = √2（DESIGN 的识别通道：出球道大球 / 三消道小球）
   local mt = GAME.sc.metrics

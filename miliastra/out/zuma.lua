@@ -2527,10 +2527,21 @@ function M.create(opts)
   for i = 1, 2 do softEdge(ui.loadedHalo[i], false, 0) end   -- 同理：环上不加柔边
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
-  -- ★ 待发球的两颗字母**挪到最后再建**（见文件末尾 ⑫）：
-  --   真机上"后建的盖在上面"，所以要让它们压在所有游戏元素之上。
-  --   另外 ③ 预备球是本体里最小的球（半径 bR*0.8 ≈ 10.7 → 字号只有 12），
-  --   而本体用的是**粗体**，我们设不了粗体 → 给它加白描边 + 稍大一号，否则压在彩球上看不清。
+  -- ★ 待发球也要字母（本体 render.js：`drawBead(..., lb(1), ...)` 和 `lb(0)` —— **两颗都带字**）
+  --   放在最后建 → 一定盖在球和描边之上。
+  -- ★★ 2026-09-25 【已改回】这一段 + 下面 sync 里的字号，就是"④ 显示正常"那一版的**原文**。
+  --    当天 13:10 的提交（43cfc76）把这里做成了"挪到 M.create 最后 + 白描边 + 字号 1.35"，
+  --    结果两颗字母全糊（12~19px 小字被描边吃掉）—— 用户报"原本 4 是正常的现在修没了，3 也没好"。
+  --    ⚠ 以后别再动这三样：**别挪位置、别加 enableOutline、别改字号公式**。
+  if ui.letters ~= 0 then
+    for i = 1, 2 do
+      local c = build(hudPrefab, '待发球字母控件', i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      ui.loadedLetter[i] = c
+    end
+  end
 
   -- ⑪ HUD 文本（加半透明底板，免得字飘在背景上）
   ui.hudOrder = {}
@@ -2553,27 +2564,6 @@ function M.create(opts)
     c.text = spec.text or ''
     ui.hud[spec.key] = c
     ui.hudOrder[#ui.hudOrder + 1] = spec.key
-  end
-
-  -- ⑫ ★★ 待发球的两颗字母**建在这里（最后）**：真机上"后建的控件盖在上面"，
-  --     所以要让它们压在所有游戏元素之上 —— 用户报"预备球没有字母"，一半原因是层级建早了。
-  --     另一半是 ③ 那颗字太小：本体用**粗体**，我们设不了粗体 → 加白描边 + 放大一号替代。
-  if ui.letters ~= 0 then
-    for i = 1, 2 do
-      local c = build(hudPrefab, '待发球字母控件', i)
-      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
-      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
-      -- ★★ **绝对不要给这两颗字母加描边**（enableOutline）！
-      --    2026-09-25 真机教训：本体用的是**粗体**，我一度拿"白描边"当粗体替代品，
-      --    结果 12~19px 这么小的字号下描边把笔画吃掉 → ④ 从"正常"变成"看不见"，
-      --    ③ 更小更糊。字号放大就够，描边一律关（本体也没有描边，是纯粗体字）。
-      c.enableOutline = false
-      -- ★★ 也**不要**调 SetAsLastSibling：那是我为了让它们"置顶"加的移植侧小聪明，
-      --    而链珠字母（真机上**显示正常**的那套）从来没用过它 —— 两条路径唯一的多余差别就是它。
-      --    现在核糖体字母与链珠字母走**完全一样**的机制（同一个模板、同一个 place() 调用、
-      --    同样只靠"后建 = 在上"的层序），少一个变量就少一个出错的地方。
-      ui.loadedLetter[i] = c
-    end
   end
 
   -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
@@ -2934,10 +2924,11 @@ function M.sync(ui, sc, st)
         local d2 = 2 * rr
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
         lc.text = tostring(base or '')
-        -- ★ 本体 `drawBead` 用**粗体**（`bold …px`），控件设不了粗体；
-        --   替代品只有"字号略大"这一条 —— **不能用描边**（小字号下描边会吃掉笔画，
-        --   真机上 ④ 就是这样从"正常"变"看不见"的）。1.25 倍 + 下限 10 是实测能看清又不溢出球面的档。
-        lc.fontSize = math.max(10, math.floor(rr * 1.25))
+        -- ★ 2026-09-25 【已改回原文】本体是 `bold round(r*1.05)px`（**粗体**），控件设不了粗体，
+        --   所以字号就用与链珠字母、绑定球字母**同一个公式**（V.letterScale = 1.15）。
+        --   ⚠ 别再改成 1.35 / 1.25 那种"放大一号"，更**别加 enableOutline** ——
+        --   那两样一起上会把 12~19px 的字母糊成一团（用户报的"原本 4 是正常的现在修没了，3 也没好"）。
+        lc.fontSize = math.max(8, math.floor(rr * V.letterScale))
         lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
         setVisible(ui, lc, true)
       end
