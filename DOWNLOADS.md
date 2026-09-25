@@ -20,7 +20,7 @@ https://github.com/ihamn/zuma
 ```
 https://ghproxy.net/https://raw.githubusercontent.com/ihamn/zuma/main/miliastra/pc/zuma-pc.zip
 ```
-里面有 4 个文件：`zuma.lua`（183,844）、`hello.lua`（5,141）、`manual.html`（28,870）、`README.txt`（837）
+里面有 4 个文件：`zuma.lua`（184,786）、`hello.lua`（5,141）、`manual.html`（28,870）、`README.txt`（837）
 
 **② DSH 迁移包** — 18,714,097 字节（17.8 MB）
 ```
