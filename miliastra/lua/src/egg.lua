@@ -27,7 +27,7 @@ M.NAME = '璃月黄金交易所'
 
 -- 规则常量（要调就改这里；注释里是玩法来源）
 M.PRICE0      = 100      -- 初始价 元/g
-M.TICK_SEC    = 5        -- 报价刷新间隔
+M.TICK_SEC    = 3        -- 报价刷新间隔（奇匠："金价每3秒更新价格一次"）
 M.VOL         = 20       -- 单次波动上限 ±20
 M.INT_SEC     = 30       -- 利息结算间隔
 M.INT_RATE    = 0.10     -- 每次 10%
@@ -145,6 +145,10 @@ function M.tick(st, dt)
     st.lastDelta = np - st.price
     st.price = np
     st.priceTick = (st.priceTick or 0) + 1    -- ★ 报价序号：还金要等它变过（借金/还金之间必须隔一次波动）
+    -- ★ 价格历史（给界面画折线图用）：只留最近 HISTORY 个点
+    st.hist = st.hist or { st.price }
+    st.hist[#st.hist + 1] = np
+    while #st.hist > M.HISTORY do table.remove(st.hist, 1) end
     note(st, string.format('报价 %.0f（%+.1f）', st.price, st.lastDelta))
     ev[#ev + 1] = { type = 'price', price = st.price, delta = st.lastDelta }
   end
@@ -195,6 +199,7 @@ end
 --   ⇒ 手上多一笔现金、同时欠 100g 黄金。金价跌了赚、涨了亏。
 --   ⚠ 一次一档价：同一档报价里借的，**必须等到下一次报价刷新**才能还金（见下）。
 M.SHORT_GOLD = 100
+M.HISTORY    = 48        -- 折线图保留多少个报价点（界面按这个数配控件）
 function M.short(st)
   if not M.canBorrow(st) then return false, '欠款到顶，借不了金' end
   st.debtGold = st.debtGold + M.SHORT_GOLD

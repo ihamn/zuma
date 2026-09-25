@@ -5,7 +5,7 @@
  },
  "script": "out\\zuma.lua",
  "level": 1,
- "frames": 40,
+ "frames": 200,
  "play": false,
  "intBits": 32,
  "controls": [
@@ -36,7 +36,7 @@
    "h": 30,
    "rot": 0,
    "pivot": 0.5,
-   "text": "帧40 关t1-pair(出球道在外) 球12/80 控件867 状态egg",
+   "text": "帧200 关t1-pair(出球道在外) 球12/80 控件916 状态egg",
    "fontSize": 18,
    "align": "Left",
    "valign": "Middle",
@@ -18772,9 +18772,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
-    36,
-    23,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -18823,9 +18823,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
-    36,
-    23,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -18874,9 +18874,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
-    36,
-    23,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -18925,9 +18925,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
-    36,
-    23,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -18976,9 +18976,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
-    36,
-    23,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -19027,9 +19027,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    32,
-    36,
-    46,
+    58,
+    47,
+    28,
     255
    ]
   },
@@ -19078,9 +19078,9 @@
    "rot": 0,
    "pivot": 0.5,
    "color": [
-    43,
+    32,
     36,
-    23,
+    46,
     255
    ]
   },
@@ -19485,7 +19485,7 @@
    "h": 42,
    "rot": 0,
    "pivot": 0.5,
-   "text": "金价   100.0 元/g   (+0.0)",
+   "text": "金价   115.1 元/g   (+7.2)",
    "fontSize": 19,
    "align": "Middle",
    "valign": "Middle",
@@ -19632,6 +19632,986 @@
    "name": "Ball",
    "id": 871,
    "active": true,
+   "visible": true,
+   "x": 717.5,
+   "y": 499.66,
+   "scale": 1,
+   "w": 380,
+   "h": 3,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    232,
+    69,
+    60,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 872,
+   "active": true,
+   "visible": true,
+   "x": 1097.5,
+   "y": 435,
+   "scale": 1,
+   "w": 401.4,
+   "h": 3,
+   "rot": 18.793,
+   "pivot": 0.5,
+   "color": [
+    232,
+    69,
+    60,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 873,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 874,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 875,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 876,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 877,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 878,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 879,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 880,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 881,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 882,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 883,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 884,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 885,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 886,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 887,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 888,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 889,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 890,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 891,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 892,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 893,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 894,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 895,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 896,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 897,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 898,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 899,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 900,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 901,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 902,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 903,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 904,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 905,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 906,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 907,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 908,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 909,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 910,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 911,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 912,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 913,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 914,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 915,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 916,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 917,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 918,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 919,
+   "active": true,
+   "visible": false,
+   "x": 907.5,
+   "y": 450,
+   "scale": 1,
+   "w": 0,
+   "h": 0,
+   "rot": 0,
+   "pivot": 0.5,
+   "color": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "kind": "image",
+   "name": "Ball",
+   "id": 920,
+   "active": true,
    "visible": false,
    "x": 1685,
    "y": 838,
@@ -19650,7 +20630,7 @@
   {
    "kind": "textbox",
    "name": "Text",
-   "id": 872,
+   "id": 921,
    "active": true,
    "visible": false,
    "x": 1685,

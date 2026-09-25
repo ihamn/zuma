@@ -2785,6 +2785,13 @@ function M.create(opts)
     --   syncEgg 在 syncMenu **之后**跑，所以哪怕 syncMenu 把它们藏了，这一帧也会被重新摆好 ✓。
     e.btn = ui.menu.btn
     e.btnLabel = ui.menu.btnLabel
+    -- ★ K 线式折线图的"笔画池"：每个报价点之间画一段（复用轨道的"棒"素材 ✓）。
+    --   48 段 ⇒ 最多画 49 个价格点（egg.lua 的 M.HISTORY = 48 ✓）。控件 868→916 ✓ 仍在上限内。
+    e.chart = {}
+    for i = 1, 49 do
+      e.chart[i] = build(linkPrefab, '彩蛋折线控件', i)
+      softEdge(e.chart[i], false, 0)
+    end
     -- ★ 奇匠要的"彩蛋开始按键"：摆在菜单里（右下角 —— 左上角是平台自己的按键，见 §42）
     e.entry = build(ballPrefab, '彩蛋入口控件', 1)
     softEdge(e.entry, false, 0)
@@ -2933,6 +2940,40 @@ local function syncEgg(ui, sc, st)
     c.fontSize = math.max(13, math.floor(19 * s))
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
+  -- ★ K 线式折线图：把最近的价格点连成线（涨=红、跌=绿 —— 中式习惯）
+  --   横轴：面板中部一条带；纵轴：按最近窗口的最低/最高价自适应缩放（留 8% 余量）
+  local hist = st2.hist or {}
+  local n = #hist
+  local cw, chh = 760 * s, 150 * s          -- 图区宽/高
+  local x0, y0 = W * 0.5 - cw * 0.5, H * 0.40
+  local lo, hi = 1e18, -1e18
+  for i = 1, n do
+    if hist[i] < lo then lo = hist[i] end
+    if hist[i] > hi then hi = hist[i] end
+  end
+  if hi - lo < 1 then hi = lo + 1 end
+  local pad = (hi - lo) * 0.08
+  lo, hi = lo - pad, hi + pad
+  local function px(i)
+    if n <= 1 then return x0 end
+    return x0 + (i - 1) * cw / (n - 1)
+  end
+  local function py(v)
+    return y0 + chh - (v - lo) / (hi - lo) * chh
+  end
+  local used = 0
+  for i = 1, n - 1 do
+    local seg = e.chart[i]
+    if seg then
+      used = i
+      local up = hist[i + 1] >= hist[i]
+      placeSeg(ui, seg, cx, cy, px(i), py(hist[i]), px(i + 1), py(hist[i + 1]),
+        3 * s, up and '#e8453c' or '#3fbf6f')
+      setVisible(ui, seg, true)
+    end
+  end
+  for i = used + 1, #e.chart do setVisible(ui, e.chart[i], false) end
+
   -- 六个按钮：两行三列
   local labels = { '买入 1g', '卖出 1g', '借 1 万', '借金套现 100g', '还金 100g', '打 工', '返 回' }
   local bw, bh = 190 * s, 62 * s
@@ -2942,7 +2983,7 @@ local function syncEgg(ui, sc, st)
     local x = W * 0.5 + (col - 1) * (bw + 26 * s)
     local y = H * 0.66 + row * (bh + 22 * s)
     place(ui, e.btn[i], cx, cy, x, y, bw, bh, 0)
-    setColor(ui, e.btn[i], (i == 6) and '#20242e' or '#2b2417')
+    setColor(ui, e.btn[i], (i == 7) and '#20242e' or '#3a2f1c')
     place(ui, e.btnLabel[i], cx, cy, x, y, bw, 44 * s, 0)
     e.btnLabel[i].text = labels[i]
     e.btnLabel[i].fontSize = math.max(13, math.floor(19 * s))
@@ -3481,7 +3522,7 @@ function M.count(ui)
     + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
     + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
-    + (ui.egg and 7 or 0)                   -- 彩蛋图层（暗幕1 + 标题1 + 数据5；按钮复用菜单池 ⇒ 不计）
+    + (ui.egg and 56 or 0)                   -- 彩蛋图层（暗幕1 + 标题1 + 数据5；按钮复用菜单池 ⇒ 不计）
     + (ui.menu and (6 + #ui.menu.groups + #ui.menu.btn * 2 + 2) or 0)   -- 菜单图层（暗幕/标题/副标题/说明/分组/按钮+文字/回菜单按钮+文字）
   return n
 end
@@ -4638,7 +4679,7 @@ M.NAME = '璃月黄金交易所'
 
 -- 规则常量（要调就改这里；注释里是玩法来源）
 M.PRICE0      = 100      -- 初始价 元/g
-M.TICK_SEC    = 5        -- 报价刷新间隔
+M.TICK_SEC    = 3        -- 报价刷新间隔（奇匠："金价每3秒更新价格一次"）
 M.VOL         = 20       -- 单次波动上限 ±20
 M.INT_SEC     = 30       -- 利息结算间隔
 M.INT_RATE    = 0.10     -- 每次 10%
@@ -4756,6 +4797,10 @@ function M.tick(st, dt)
     st.lastDelta = np - st.price
     st.price = np
     st.priceTick = (st.priceTick or 0) + 1    -- ★ 报价序号：还金要等它变过（借金/还金之间必须隔一次波动）
+    -- ★ 价格历史（给界面画折线图用）：只留最近 HISTORY 个点
+    st.hist = st.hist or { st.price }
+    st.hist[#st.hist + 1] = np
+    while #st.hist > M.HISTORY do table.remove(st.hist, 1) end
     note(st, string.format('报价 %.0f（%+.1f）', st.price, st.lastDelta))
     ev[#ev + 1] = { type = 'price', price = st.price, delta = st.lastDelta }
   end
@@ -4806,6 +4851,7 @@ end
 --   ⇒ 手上多一笔现金、同时欠 100g 黄金。金价跌了赚、涨了亏。
 --   ⚠ 一次一档价：同一档报价里借的，**必须等到下一次报价刷新**才能还金（见下）。
 M.SHORT_GOLD = 100
+M.HISTORY    = 48        -- 折线图保留多少个报价点（界面按这个数配控件）
 function M.short(st)
   if not M.canBorrow(st) then return false, '欠款到顶，借不了金' end
   st.debtGold = st.debtGold + M.SHORT_GOLD
