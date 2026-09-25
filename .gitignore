@@ -31,3 +31,13 @@ _transfer/
 
 # æœ¬åœ°æ’æŸ¥è‰ç¨¿ï¼ˆæ¢é’ˆã€ä¸´æ—¶ dumpã€ä¼šè¯è¿ç§»å®éªŒï¼‰â€”â€” æœ‰ä»·å€¼çš„ä¸œè¥¿è¦æ”¶è¿› miliastra/tools/
 _verify/
+
+# ÊÔÍæÌ¨/Ì½ÕëµÄÁÙÊ±²úÎï£¨Ã¿´ÎÅÜ¶¼²»Ò»Ñù£¬²»ÊôÓÚ²Ö¿â£©
+miliastra/out/rail-*.json
+miliastra/out/rail-*.png
+miliastra/out/zoom-*.json
+miliastra/out/zoom-*.png
+miliastra/out/rib-*.json
+miliastra/out/rib-*.png
+miliastra/out/probe-*.json
+
