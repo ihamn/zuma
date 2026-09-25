@@ -2350,6 +2350,23 @@ local function setScaleRaw(c, s)
   c.localScaleZ = 1
 end
 
+-- ★★ 清掉某个控件身上还没播完的动效（给了 kind 就只清那一种），并把缩放/颜色复位。
+--    为什么必须有它：控件是**池化复用**的，而 'gone'（炸开淡出）会把控件放大到 1.9×；
+--    若 0.22 秒内这颗控件被回收去显示另一颗球，新球就会"异常增大"——用户报的
+--    "3n 道上的小球异常增大"就是这个（HANDOFF §29）。
+--    本体用 canvas 每帧重画、不存在复用，所以这是移植侧必须自己管的事。
+local function cancelFx(ui, c, kind)
+  if not (ui and ui.fx and c) then return end
+  for i = #ui.fx, 1, -1 do
+    local fx = ui.fx[i]
+    if fx.c == c and (kind == nil or fx.kind == kind) then
+      setScaleRaw(c, 1)          -- 一律复位：pop 会留下 0.25、gone 会留下 1.9，都不能带给下一颗球
+      if fx.hex then invalidateColor(ui, c) end
+      table.remove(ui.fx, i)
+    end
+  end
+end
+
 -- 便宜的缓动（够用即可；要 30 种缓动可以换 game.Tween，见文件头说明）
 local function easeOut(u) return 1 - (1 - u) * (1 - u) end
 local function easeBack(u)
@@ -2383,6 +2400,8 @@ function M.create(opts)
     elimOwner = {},          -- 球 id -> 正在显示它的绑定小球控件（用来播"被消掉"的动效）
     elimHex = {},            -- 球 id -> 绑定小球的颜色（淡出时要用同一个底色改 alpha）
     wasPaired = {},          -- 球 id -> 上一帧是否已读出
+    elimShown = {},          -- 槽位 i -> 该槽位当前显示的是哪颗球（换球 = 回收，必须先清动效）
+    elimSlot = {},           -- 球 id -> 它占的槽位 i（用来判断"槽位是否已空"）
     t = 0,
     stats = { writes = 0, ballWrites = 0, hudWrites = 0 },
   }
@@ -2756,6 +2775,17 @@ function M.sync(ui, sc, st)
   for i = 1, #ui.elim do
     local e = elim[i]
     if e then
+      -- ★★ 控件复用前先复位（HANDOFF §29）：绑定小球池是按**槽位**复用的，
+      --   而这颗槽位上一颗球的"炸开淡出"（把控件放大到 1.9×）可能还没播完 →
+      --   新球就会顶着 1.9 倍出现。用户报的"3n 道上的小球异常增大"就是这个，
+      --   而且他给的分界完全对：新手第 1 关**不发生消除**（gone 动效 0 次）所以从没出现，
+      --   第 2 关开始才消除 → 第 2 关起才开始出现。
+      local key = (e.partner and e.partner.id) or ('dock:' .. tostring(e.base))
+      if ui.elimShown[i] ~= key then
+        cancelFx(ui, ui.elim[i])          -- 换了另一颗球 = 回收：清掉残留动效 + 缩放复位
+        ui.elimShown[i] = key
+      end
+      cancelFx(ui, ui.elim[i], 'gone')    -- 兜底：只要这一帧还要画球，就不许再有 gone 在跑
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
       -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
@@ -2780,6 +2810,7 @@ function M.sync(ui, sc, st)
       if pid ~= nil then
         liveElim[pid] = true
         ui.elimOwner[pid] = ui.elim[i]
+        ui.elimSlot[pid] = i
         ui.elimHex[pid] = e.wrong and CFG.WRONG_COLOR or baseColor(e.base)
         -- 刚被读出：绑定小球"弹"一下（本体 drawPairLink 的 pairGlow 质感）
         if ui.fancy ~= 0 and ui.wasPaired[pid] == false then
@@ -2789,6 +2820,7 @@ function M.sync(ui, sc, st)
       end
     else
       setVisible(ui, ui.elim[i], false)
+      ui.elimShown[i] = nil      -- 槽位空出来：下次有新球进来就算"换球"，会先复位动效/缩放
       if ui.elimLetter and ui.elimLetter[i] then setVisible(ui, ui.elimLetter[i], false) end
       -- ★★ 这里原来写的是 `if eh then setVisible(ui, eh, false) end` —— 而 eh 是上面 if 分支里的
       --    local，**出了作用域**（Lua 不报错，直接是 nil），于是这条隐藏**永远不执行**
@@ -2808,11 +2840,21 @@ function M.sync(ui, sc, st)
           if e and e.partner and e.partner.id == pid then wasLive = true; break end
         end
         if not wasLive and ui.wasPaired[pid] == true then
-          ui.fx[#ui.fx + 1] = { c = c, kind = 'gone', t = 0, dur = 0.22,
-                                hex = ui.elimHex[pid] or '#ffffff' }
-          invalidateColor(ui, c)
+          -- ★★ 只有当这颗控件**这一刻是空着的**（槽位记录为 nil）才播"炸开淡出"：
+          --   空着 = 已经收干净、不会再被画，放大它只是给玩家看消散；
+          --   若这一刻槽位已经被**另一颗球接管**（elimShown[i] ~= nil），就绝不能挂放大动效
+          --   —— 那正是用户报的"3n 道小球异常增大"（HANDOFF §29）。
+          --   （回收发生在后面时，由 cancelFx 在换球那一帧兜底清掉。）
+          local idx = ui.elimSlot[pid]
+          local free = (idx ~= nil) and (ui.elimShown[idx] == nil)
+          if free then
+            ui.fx[#ui.fx + 1] = { c = c, kind = 'gone', t = 0, dur = 0.22,
+                                  hex = ui.elimHex[pid] or '#ffffff' }
+            invalidateColor(ui, c)
+          end
         end
         ui.elimOwner[pid] = nil
+        ui.elimSlot[pid] = nil
         ui.elimHex[pid] = nil
         ui.wasPaired[pid] = nil
       end
