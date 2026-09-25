@@ -28,3 +28,6 @@ refs/
 
 # DSH 迁移用的临时包（含会话与凭据），绝不进仓库
 _transfer/
+
+# 本地排查草稿（探针、临时 dump、会话迁移实验）—— 有价值的东西要收进 miliastra/tools/
+_verify/

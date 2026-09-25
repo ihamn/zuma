@@ -162,7 +162,11 @@ if (luaRun.code !== 0) {
   console.error(luaRun.stderr || luaRun.stdout);
   process.exit(2);
 }
-const luaOut = luaRun.stdout.replace(/\n$/, '').split('\n');
+// ★★ 电脑端（Windows）：Lua 的 stdout 是**文本模式**，每个 '\n' 会被写成 '\r\n'；
+//   而 Node 这边写的是裸 '\n'。不归一化的话，每一行的**最后一列**都会变成 "0\r" vs "0"
+//   —— 显示出来一模一样（\r 看不见），却报几千处"不一致"。
+//   2026-09-25 实测：Windows 上 5702 处假差异，全是这个 \r。
+const luaOut = luaRun.stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n$/, '').split('\n');
 
 // ---------------- 比对 ----------------
 const TOL = 1e-9;

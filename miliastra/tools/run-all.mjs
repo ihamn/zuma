@@ -9,6 +9,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { luaBanner } from './lib/lua-runner.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STEPS = [
@@ -22,8 +23,17 @@ const STEPS = [
   ['export-levels.mjs', '导出关卡数据（levels.js -> lua/src/levels_data.lua）'],
   ['parity.mjs', 'JS<->Lua 对拍（移植正确性的唯一证据）'],
   ['test-lua.mjs', 'Lua 侧测试（假宿主 + 表现层 + 输入层 + 整关）'],
+  ['sim-play.mjs', '本地试玩台：在千星客户端 Lua 运行时里真跑一遍（没装模拟器就跳过）'],
   ['pack-pc.mjs', '打包电脑端压缩包（zuma.lua + 操作手册）']
 ];
+
+// ★ 先把解释器找出来并报版本：后面几步全依赖它，环境不对时应该**一眼看出来是环境问题**，
+//   而不是等 parity/test-lua 各自抛一句 "没找到 Lua 解释器"。
+try {
+  console.log('[环境] ' + luaBanner());
+} catch (e) {
+  console.log('[环境] !! ' + e.message);
+}
 
 let bad = 0;
 for (const [file, desc] of STEPS) {

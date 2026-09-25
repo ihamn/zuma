@@ -75,12 +75,66 @@ M.Enum = Enum
 
 -- ==================== 控件 ====================
 
-local BASE_FIELDS = {
+-- ★★ 真机契约①：控件 userdata 是**按类型封死**的 —— 不在白名单里的字段，
+--     读 -> nil，写 -> 报 `cannot set <字段>, no such field`（官方契约 §12）。
+--   来源：模拟器客户端运行时 `client/lua-runtime/src/scene.js` 的
+--     BASE_RO / BASE_RW / KIND_RO / KIND_RW（那几张表是照着官方《客户端控件 API 文档》的字段面做的）。
+--
+--   ★ 为什么本地要照抄这张表：真机上写错一个字段名**不会报错、也不生效**（或者当场崩），
+--     而本假宿主原来"什么字段都收"。ui.lua 里的 `c.id`（真机是 `Id`）就是这么漏过 546 项本体的。
+--     契约写在代码里，导出/测试时才拦得住。
+local BASE_RO = { 'alive', 'Id', 'prefabIndex', 'active', 'activeInHierarchy', 'visible' }
+local BASE_RW = {
+  'name', 'parent',
   'anchoredPositionX', 'anchoredPositionY', 'sizeDeltaX', 'sizeDeltaY',
   'anchorMinX', 'anchorMinY', 'anchorMaxX', 'anchorMaxY', 'pivotX', 'pivotY',
   'localScaleX', 'localScaleY', 'localScaleZ',
-  'localRotationX', 'localRotationY', 'localRotationZ',
+  'localRotationX', 'localRotationY', 'localRotationZ', 'canControllerFocus',
 }
+local KIND_RO = {
+  image = { 'imageSource', 'imageId' },
+  grid = { 'itemCount', 'scrollDirection', 'layoutConstraint', 'layoutConstraintFixedCount' },
+  reference = { 'referencedPrefabIndex' },
+}
+-- ⚠ 这里的 kind 名是本假宿主自己的（cursorarea / root），与 scene.js 的 cursor / container 对应
+local KIND_RW = {
+  root = { 'isolateNavigation', 'disableKeyEventPassthrough', 'disableCursorEventPassthrough', 'showCursor' },
+  container = { 'isolateNavigation', 'disableKeyEventPassthrough', 'disableCursorEventPassthrough', 'showCursor' },
+  textbox = { 'text', 'fontSize', 'fontColor', 'bgColor', 'enableOutline', 'outlineColor',
+              'horizontalAlignment', 'verticalAlignment', 'adaptiveFontSize', 'minimumFontSize' },
+  textwindow = { 'interactable', 'showScrollBar', 'text', 'fontSize', 'fontColor', 'bgColor',
+                 'enableOutline', 'outlineColor', 'horizontalAlignment', 'verticalAlignment',
+                 'adaptiveFontSize', 'minimumFontSize' },
+  -- 文档写了 imageType 可写，但真机赋值报 "cannot set imageType"（官方契约 §14）—— 本地照样封死
+  image = { 'imageColor', 'enableMask', 'enableSoftEdge', 'softEdgeMode', 'softEdgeWidthX',
+            'softEdgeWidthY', 'horizontalSoftRange', 'verticalSoftRange', 'reverseMaskArea',
+            'fillType', 'fillHorizontalType', 'fillVerticalType', 'fillRadial90Type',
+            'fillRadialType', 'fillAmount' },
+  button = { 'interactable', 'clickAudioId', 'raycastTarget' },
+  cursorarea = { 'raycastTarget' },
+  cursor = { 'raycastTarget' },
+  grid = { 'itemPrefabIndex', 'raycastTarget', 'showScrollBar', 'interactable', 'scrollProgress' },
+  keyhint = { 'keyboardKeyCode', 'controllerKeyCode' },
+  animation = { 'animationId', 'playSoundEffect', 'layer' },
+  fullscreen = { 'animationId', 'playSoundEffect' },
+}
+
+local function setOf(list, into)
+  into = into or {}
+  for i = 1, #list do into[list[i]] = true end
+  return into
+end
+local BASE_RO_SET = setOf(BASE_RO)
+local BASE_RW_SET = setOf(BASE_RW)
+local KIND_SETS = {}
+local function setsFor(kind)
+  local s = KIND_SETS[kind]
+  if not s then
+    s = { ro = setOf(KIND_RO[kind] or {}), rw = setOf(KIND_RW[kind] or {}) }
+    KIND_SETS[kind] = s
+  end
+  return s
+end
 
 local nextControlId = 0
 
@@ -88,11 +142,13 @@ local function newControl(kind, prefabIndex, name)
   nextControlId = nextControlId + 1
   local c = {
     __kind = kind,
-    alive = true,
-    id = nextControlId,
-    prefabIndex = prefabIndex or 0,
-    active = (kind == 'root'),          -- 文档：默认 false，只有激活的才跑脚本逻辑
-    visible = true,
+    -- ★ 只读字段一律存在 `__` 内部名下面：Lua 的 __newindex 只在"键不存在"时触发，
+    --   要是直接把 active/Id 存成同名字段，外面 `c.active = true` 会**绕过**只读检查。
+    __alive = true,
+    __Id = nextControlId,               -- ★ 真机字段名是 `Id`（首字母大写）；小写 id 真机读出来是 nil
+    __prefabIndex = prefabIndex or 0,
+    __active = (kind == 'root'),        -- 文档：默认 false，只有激活的才跑脚本逻辑
+    __visible = true,                   -- 真机 visible 是**只读**字段：只能读，改要走 SetVisible()
     name = name or (kind .. '#' .. nextControlId),
     parent = nil,
     children = {},
@@ -101,17 +157,18 @@ local function newControl(kind, prefabIndex, name)
     cursorListeners = {},
     navListeners = {},
   }
-  for i = 1, #BASE_FIELDS do c[BASE_FIELDS[i]] = 0 end
+  c.anchoredPositionX, c.anchoredPositionY = 0, 0
+  c.anchorMinX, c.anchorMinY, c.anchorMaxX, c.anchorMaxY = 0, 0, 0, 0
+  c.pivotX, c.pivotY = 0, 0
   c.localScaleX, c.localScaleY, c.localScaleZ = 1, 1, 1
+  c.localRotationX, c.localRotationY, c.localRotationZ = 0, 0, 0
   c.sizeDeltaX, c.sizeDeltaY = 100, 100
   if kind == 'image' then
     c.imageSource = Enum.ImageSource.StaticReference
     c.imageId = 0
     c.imageColor = Color.FromRGBA(255, 255, 255, 255)
-    c.imageType = Enum.ImageType.Basic
-    c.fillType = Enum.ImageFillType.Unused
-    c.fillAmount = 1
     c.enableMask, c.enableSoftEdge, c.reverseMaskArea = false, false, false
+    c.fillType, c.fillAmount = Enum.ImageFillType.Unused, 1
   elseif kind == 'textbox' then
     c.text = ''
     c.fontSize = 24
@@ -122,7 +179,7 @@ local function newControl(kind, prefabIndex, name)
     c.minimumFontSize = 12
     c.horizontalAlignment = Enum.TextHorizontalAlignment.Left
     c.verticalAlignment = Enum.TextVerticalAlignment.Top
-  elseif kind == 'cursorarea' then
+  elseif kind == 'cursorarea' or kind == 'cursor' then
     c.raycastTarget = true
   end
   return c
@@ -151,11 +208,11 @@ function METHODS:FindChild(path)
   return cur
 end
 function METHODS:SetActive(active)
-  self.active = active and true or false
+  rawset(self, '__active', active and true or false)    -- active 是只读字段，只能由宿主自己改
   return self
 end
 function METHODS:SetVisible(visible)
-  self.visible = visible and true or false
+  rawset(self, '__visible', visible and true or false)  -- 同理：visible 只读，改走这个方法
   return self
 end
 function METHODS:GetSiblingIndex()
@@ -224,7 +281,11 @@ end
 function METHODS:RemoveNavigationEventListeners(eventType) self.navListeners[eventType] = nil; return self end
 
 -- 图片
-function METHODS:SetImage(imageSource, imageId) self.imageSource, self.imageId = imageSource, imageId; return self end
+function METHODS:SetImage(imageSource, imageId)
+  rawset(self, 'imageSource', imageSource)   -- imageSource/imageId 是只读字段
+  rawset(self, 'imageId', imageId)
+  return self
+end
 function METHODS:SetSoftEdgeWidth(wx, wy) self.softEdgeWidthX, self.softEdgeWidthY = wx, wy; return self end
 function METHODS:SetFillUnused() self.fillType, self.fillAmount = Enum.ImageFillType.Unused, 0; return self end
 function METHODS:SetFillHorizontal(t, amt) self.fillType, self.fillHorizontalType, self.fillAmount = Enum.ImageFillType.Horizontal, t, amt; return self end
@@ -253,19 +314,43 @@ function METHODS:SimulateCursorClick()
   return self
 end
 
-local CONTROL_MT = {
-  __index = function(t, k)
-    if k == 'activeInHierarchy' then
-      local c = t
-      while c do
-        if not c.active then return false end
-        c = c.parent
-      end
-      return true
-    end
-    return METHODS[k]
-  end,
+local CONTROL_MT = {}
+
+-- 只读字段 -> 内部存储名（存在内部名下，写同名字段才会撞上 __newindex）
+local RO_STORE = {
+  alive = '__alive', Id = '__Id', prefabIndex = '__prefabIndex',
+  active = '__active', visible = '__visible',
 }
+
+CONTROL_MT.__index = function(t, k)
+  if k == 'activeInHierarchy' then
+    local c = t
+    while c do
+      if not c.active then return false end
+      c = c.parent
+    end
+    return true
+  end
+  local store = RO_STORE[k]
+  if store then return rawget(t, store) end
+  if BASE_RW_SET[k] then return rawget(t, k) end
+  local s = setsFor(t.__kind)
+  if s.ro[k] or s.rw[k] then return rawget(t, k) end
+  local m = METHODS[k]
+  if m then return m end
+  return nil            -- ★ 真机：不在白名单里的字段**读为 nil**（不是报错）
+end
+
+CONTROL_MT.__newindex = function(t, k, v)
+  if type(k) == 'string' and k:sub(1, 2) == '__' then return rawset(t, k, v) end   -- 假宿主内部字段
+  if BASE_RO_SET[k] then
+    error('cannot set ' .. tostring(k) .. ', no such field', 2)                    -- ★ 真机原话
+  end
+  local s = setsFor(t.__kind)
+  if s.ro[k] then error('cannot set ' .. tostring(k) .. ', no such field', 2) end
+  if BASE_RW_SET[k] or s.rw[k] then return rawset(t, k, v) end
+  error('cannot set ' .. tostring(k) .. ', no such field', 2)
+end
 
 local function attachControl(host, kind, prefabIndex, name)
   local c = newControl(kind, prefabIndex, name)
@@ -387,15 +472,26 @@ function M.newHost(opts)
     audio = {},
     time = 0,
     paused = false,
-    updateEnabled = true,
+    -- ★★ 真机契约②：「EnableUpdate 前无 OnUpdate」。所以默认是**关**的，
+    --    脚本必须在 OnInit 里调 script:EnableUpdate(true) 才会收到每帧回调。
+    updateEnabled = false,
+    -- ★★ 真机契约③：生命周期阶段决定 Instantiate 能不能成功。
+    --    OnInit / OnDestroy 阶段 -> 返回 nil（真机探针）；OnStart 及之后 -> 控件。
+    --    默认 'running'：直接调 API 的测试（不走 mount）当宿主已经起来了。
+    phase = 'running',
     mounted = nil,
     stats = { instantiated = 0, destroyed = 0, cursorEvents = 0, keyEvents = 0, tweens = 0, seqs = 0 },
   }
 
+  -- 阶段切换（给不走 mount 的测试用；mount 会自动走一遍）
+  function host.beginInit() host.phase = 'init' end
+  function host.enterStart() host.phase = 'start' end
+  function host.enterRunning() host.phase = 'running' end
+
   -- ---------- 控件树 ----------
   function host.newControl(kind, prefabIndex, name, parent)
     local c = attachControl(host, kind, prefabIndex, name)
-    host.controls[c.id] = c
+    host.controls[c.Id] = c
     parent = parent or host.root
     if parent then
       c.parent = parent
@@ -510,16 +606,29 @@ function M.newHost(opts)
   end
 
   -- ---------- 脚本生命周期 ----------
+  -- ★★ 照真机的顺序走：OnInit -> OnEnable -> OnStart（退出 OnDisable -> OnDestroy），
+  --   并且**阶段可见**：
+  --     OnInit  阶段 Instantiate 返回 nil（真机探针）
+  --     OnStart 阶段才行
+  --   所以 mount 出来的宿主和真机行为一致，测试才拦得住"在 OnInit 里建控件"这种错。
   function host.mount(tbl)
     host.mounted = tbl
     host.scriptObj.object = host.scriptObj.object or host.root
+    host.phase = 'init'
     if tbl.OnInit then tbl.OnInit() end
+    host.phase = 'enable'
+    if tbl.OnEnable then tbl.OnEnable() end
+    host.phase = 'start'
     if tbl.OnStart then tbl.OnStart() end
+    host.phase = 'running'
     return tbl
   end
   function host.unmount()
+    host.phase = 'destroy'
+    if host.mounted and host.mounted.OnDisable then host.mounted.OnDisable() end
     if host.mounted and host.mounted.OnDestroy then host.mounted.OnDestroy() end
     host.mounted = nil
+    host.phase = 'idle'
   end
 
   function host.tick(dt)
@@ -558,6 +667,8 @@ function M.newHost(opts)
   function game.GetControllerRightStickAxis() return host.stickRX or 0, host.stickRY or 0 end
 
   function game.InstantiateClientUIControl(prefabIndex, parent)
+    -- ★ 真机契约：OnInit / OnDestroy 阶段返回 nil（探针：OnInit/OnDestroy -> nil；OnStart -> 控件）
+    if host.phase == 'init' or host.phase == 'destroy' then return nil end
     -- 测试用：把某个模板索引标成"创建必定失败"，用来验证错误能不能显示到屏幕上
     if host.failPrefabs and host.failPrefabs[prefabIndex] then return nil end
     local kind = host.prefabs[prefabIndex] or 'image'
@@ -567,8 +678,8 @@ function M.newHost(opts)
   end
   function game.DestroyClientUIControl(c)
     if not c then return end
-    c.alive = false
-    host.controls[c.id] = nil
+    rawset(c, '__alive', false)            -- alive 是只读字段
+    host.controls[c.Id] = nil
     host.stats.destroyed = host.stats.destroyed + 1
     if c.parent then
       for i = #c.parent.children, 1, -1 do
@@ -649,6 +760,25 @@ function M.newHost(opts)
     return #host.logs
   end
 
+  -- ★★ 真机契约④：game 的函数是**点号调用**的（`game.GetUICanvasSize()`）。
+  --   写成冒号（`game:GetUICanvasSize()`）会把 game 自己当成第一个实参塞进去，
+  --   真机报 `bad argument count ... (0 expected, got 1)`（2026-09-25 真机回传）。
+  --   这里照做：冒号调用当场报错，别让它在本地"看着没事"。
+  do
+    local names = {}
+    for k, v in pairs(game) do if type(v) == 'function' then names[#names + 1] = k end end
+    for i = 1, #names do
+      local k, f = names[i], game[names[i]]
+      game[k] = function(...)
+        local a = { ... }
+        if a[1] == game then
+          error('bad argument count to ' .. k .. ' (点号调用，别用冒号：game.' .. k .. '(...))', 2)
+        end
+        return f(...)
+      end
+    end
+  end
+
   host.game = game
 
   -- ---------- 假 script 对象 ----------
@@ -692,7 +822,7 @@ function M.newHost(opts)
     local r = host.newControl('root', 0, name or 'Canvas', nil)
     r.anchoredPositionX, r.anchoredPositionY = (w or host.canvas.w) / 2, (h or host.canvas.h) / 2
     r.sizeDeltaX, r.sizeDeltaY = w or host.canvas.w, h or host.canvas.h
-    r.active = true
+    rawset(r, '__active', true)
     host.roots[#host.roots + 1] = r
     host.root = host.root or r
     return r

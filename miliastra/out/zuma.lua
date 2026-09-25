@@ -2156,12 +2156,20 @@ local function hexColor(s, fallback)
 end
 M.hexColor = hexColor
 
--- 每颗球要写进去的东西（脏检查的键）
-local BALL_KEYS = { 'anchoredPositionX', 'anchoredPositionY', 'sizeDeltaX', 'sizeDeltaY', 'visible' }
+-- ★★ 控件运行时 ID 的字段名：官方是 **`Id`（首字母大写）**。
+--    真机观察（客户端 Lua 运行时契约 §16）：「`Id`（客户端控件运行时ID，首字母大写）/ `prefabIndex`；
+--    旧 probe 中的 `control.id` / `prefabId` 是**旧版本接口，不作为兼容口径**」。
+--    原来这里写的是小写 `c.id` —— 真机上恒为 nil，于是 `ui.last[nil]` 直接报
+--    「table index is nil」，整局在第一帧就崩。本地假宿主提供的是小写 id，所以测试发现不了。
+--    两个都认：真机走 Id，本地假宿主走 id。
+local function ctrlId(c)
+  return c.Id or c.id
+end
 
 local function setField(ui, c, key, value)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
   if cache[key] == value then return false end
   cache[key] = value
   c[key] = value
@@ -2169,8 +2177,9 @@ local function setField(ui, c, key, value)
 end
 
 local function setColor(ui, c, hex)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
   if cache.__color == hex then return false end
   cache.__color = hex
   c.imageColor = hexColor(hex)
@@ -2178,11 +2187,25 @@ local function setColor(ui, c, hex)
 end
 
 local function setImage(ui, c, id)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local key = ctrlId(c)
+  local cache = ui.last[key]
+  if cache == nil then cache = {}; ui.last[key] = cache end
   if cache.__image == id then return false end
   cache.__image = id
   c:SetImage(Enum.ImageSource.StaticReference, id)
+  return true
+end
+
+-- ★★ 可见性：官方契约里 `visible` 是**只读**字段 —— 读得到，**写会报**
+--    「cannot set visible, no such field」。改可见性必须调方法 SetVisible()。
+--    原来这里用 setField(..., 'visible', ...) 直接赋值，真机上一进 sync 就崩。
+local function setVisible(ui, c, v)
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
+  if cache.__visible == v then return false end
+  cache.__visible = v
+  c:SetVisible(v)
   return true
 end
 
@@ -2291,13 +2314,13 @@ function M.sync(ui, sc, st)
       if setField(ui, c, 'anchoredPositionY', cy - b.y) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       if setField(ui, c, 'sizeDeltaX', d) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       if setField(ui, c, 'sizeDeltaY', d) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
-      if setField(ui, c, 'visible', true) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
+      if setVisible(ui, c, true) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       -- 配错 = 灰球；已配对但还没定型，用原色（吸附飞行途中）
       local hex = b.wrongMark and CFG.WRONG_COLOR or (CFG.BASE_COLOR[b.base] or '#ffffff')
       setColor(ui, c, hex)
       setImage(ui, c, ui.art[b.base] or 1)
     else
-      setField(ui, c, 'visible', false)
+      setVisible(ui, c, false)
     end
   end
 
@@ -2312,11 +2335,11 @@ function M.sync(ui, sc, st)
       local d = 2 * p.r
       setField(ui, c, 'sizeDeltaX', d)
       setField(ui, c, 'sizeDeltaY', d)
-      setField(ui, c, 'visible', true)
+      setVisible(ui, c, true)
       setColor(ui, c, CFG.BASE_COLOR[p.base] or '#ffffff')
       setImage(ui, c, ui.art[p.base] or 1)
     else
-      setField(ui, c, 'visible', false)
+      setVisible(ui, c, false)
     end
   end
 
@@ -2324,7 +2347,7 @@ function M.sync(ui, sc, st)
   if ui.hud.rb then
     setField(ui, ui.hud.rb, 'anchoredPositionX', sc.rb.x - cx)
     setField(ui, ui.hud.rb, 'anchoredPositionY', cy - sc.rb.y)
-    setField(ui, ui.hud.rb, 'visible', true)
+    setVisible(ui, ui.hud.rb, true)
   end
 
   -- ---- HUD 文本 ----
@@ -2516,6 +2539,15 @@ local function param(name, default)
   return v
 end
 
+-- 不依赖控件的日志通道（官方日志 API）。
+-- ★ 为什么必须有：真机上控件要等到 OnStart 才建得出来，一旦在那之前失败，
+--   屏幕上那行"诊断字"本身也是控件、也建不出来 —— 这时只剩日志能告诉我们死在哪。
+local function say(fmt, ...)
+  local ok, s = pcall(string.format, fmt, ...)
+  if not ok then s = tostring(fmt) end
+  if print then pcall(print, '[zuma] ' .. s) end
+end
+
 -- 玩区容器的尺寸 = 画布尺寸；它以画布中心为原点
 local function buildHudSpecs(w, h)
   local pad = 16
@@ -2533,21 +2565,45 @@ end
 -- ==================== 启动 ====================
 
 function G.OnInit()
-  -- 最外层不做任何可能失败的事：先把画布尺寸和诊断显示准备好
+  -- ★★ 真机限制（来源：客户端 Lua 运行时真机探针 + 官方《客户端控件 API 文档》）：
+  --   1. game.InstantiateClientUIControl 在 **OnInit 阶段返回 nil**，只有 OnStart 及之后成功。
+  --      —— 所以这里**一个控件都不建**，全部挪到 OnStart（见 G.tryBoot）。
+  --   2. 官方 API 有 script:EnableUpdate(enabled)；真机结论是「EnableUpdate 前无 OnUpdate」。
+  --      —— 不打开它，OnUpdate 永远不会被调用，画面就是死的。
+  -- 因此 OnInit 里只做**不可能失败**的事。
   local ok0, w, h = pcall(game.GetUICanvasSize)
   if not ok0 then w, h = 900, 900 end
   G.canvas = { w = w, h = h }
   G.view = CFG.viewFor(w, h)
   G.diag = param('diag', 1) ~= 0
   G.error = nil          -- ★ 每次重来都清掉：否则上一次的错误会一直挂在屏幕上（测试抓到的）
+  G.booted = false
 
+  say('OnInit：画布 %dx%d', w, h)
+  if script and script.EnableUpdate then
+    local eok, eerr = pcall(function() script:EnableUpdate(true) end)
+    say('EnableUpdate(true) -> %s', eok and 'ok' or tostring(eerr))
+  else
+    say('警告：没有 script.EnableUpdate，逐帧回调可能不会触发')
+  end
+  return G
+end
+
+-- 真正建控件。**只能在 OnStart 及之后调用**：真机 OnInit 阶段 Instantiate 返回 nil。
+function G.tryBoot()
+  if G.booted then return end
+  G.booted = true
+  say('tryBoot：开始建控件')
   local ok, err = pcall(G.boot)
-  if not ok then
+  if ok then
+    say('tryBoot：成功')
+  else
     G.error = tostring(err)
     G.screen = 'error'
+    say('tryBoot 失败：%s', tostring(err))
+    if printerr then pcall(printerr, '[zuma] 建控件失败：' .. tostring(err)) end
   end
   G.refreshDiag()
-  return G
 end
 
 -- 真正干活的初始化。任何一步失败都会被 OnInit 的 pcall 接住并显示在屏幕上。
@@ -2564,6 +2620,7 @@ function G.boot()
   if not root then error('找不到挂载控件：脚本要挂在**客户端控件**上（不能挂主屏）') end
   G.root = root
   root:SetActive(true)
+  say('挂载点 = %s', tostring(root))
 
   -- ★★ 诊断框**第一个建**：万一后面哪一步炸了，屏幕上还有地方显示原因。
   --   （这一条很关键：我在手机上看不到你的屏幕，那行字就是唯一的线索）
@@ -2579,6 +2636,8 @@ function G.boot()
     if not G.diag then dc:SetVisible(false) end
   end
 
+  say('诊断框 = %s', tostring(G.diagControl))
+
   -- 玩区容器：占满画布、居中
   local playPrefab = param('playPrefab', param('ballPrefab', 1))
   G.area = game.InstantiateClientUIControl(playPrefab, root)
@@ -2593,6 +2652,7 @@ function G.boot()
   G.cursorArea:SetActive(true)
   G.cursorArea:SetAnchoredPosition(0, 0)
   G.cursorArea:SetSizeDelta(w, h)
+  say('玩区 = %s / 光标区 = %s', tostring(G.area), tostring(G.cursorArea))
 
   G.ui = UI.create({
     parent = G.area,
@@ -2612,7 +2672,10 @@ function G.boot()
   })
 
 
+  say('控件池：球 %d / 弹药 %d', #G.ui.balls, #G.ui.shots)
+
   G.startLevel(param('levelIndex', 1))
+  say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
   return G
 end
 
@@ -2657,6 +2720,11 @@ end
 -- ==================== 每帧 ====================
 
 function G.OnUpdate(dt)
+  -- 兜底：万一某些版本不调 OnStart，第一帧补建（此时已不在 OnInit 阶段，控件建得出来）
+  if not G.booted then
+    say('没等到 OnStart，在 OnUpdate 里补建')
+    G.tryBoot()
+  end
   G.frames = G.frames + 1
   if G.error then
     G.refreshDiag()
@@ -2746,7 +2814,10 @@ function G.syncState()
   }
 end
 
-function G.OnStart() end
+function G.OnStart()
+  -- 真机上这里是**第一个能建控件**的时机（OnInit 阶段 Instantiate 返回 nil）
+  G.tryBoot()
+end
 function G.OnEnable() end
 function G.OnDisable() end
 function G.OnLevelUpdate(dt) end   -- OnUpdate 已经不受时停影响，这里不再重复推进

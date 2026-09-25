@@ -32,8 +32,8 @@ RNA 主题的祖玛（双轨道：出球道冒碱基、三消道发珠配对、�
 
 ## 开始干活前
 
-    node miliastra/tools/run-all.mjs        # 导出 + 沙箱检查 + 打包 + 对拍 + Lua 测试，退出码即结果
-    node tools/test-*.mjs ; node tools/smoke.mjs   # 本体回归（11 个文件 / 546 项）
+    node miliastra/tools/run-all.mjs        # 导出 + 沙箱检查 + 打包 + 对拍 + Lua 测试 + 试玩台 + 电脑端包，退出码即结果
+    node tools/test-*.mjs ; node tools/smoke.mjs   # 本体回归（9 个文件 460 项 + smoke 82 项）
 
 ## 硬规则（都是踩过坑换来的）
 
@@ -57,8 +57,29 @@ RNA 主题的祖玛（双轨道：出球道冒碱基、三消道发珠配对、�
 - `git add` / `git push` 需要提权（要写对象库的硬链接），只读命令不需要
 - 手机端推送用 `~/.ssh/id_ed25519`（已配好）；电脑端要用自己的凭据。见上面「仓库」一节
 
+## 电脑端特有（Windows 上开工要注意）
+
+- **不用自己找 Lua**：`tools/lib/lua-runner.mjs` 按 `ZUMA_LUA` > `miliastra/vendor/bin/lua[.exe]` >
+  PATH > `%LOCALAPPDATA%\Programs\Lua\bin\lua.exe` 找，并在 run-all 第一行报版本。
+  千星奇域是 **Lua 5.3**；本机装的是 5.4（`winget install DEVCOM.Lua`），对拍 81339 个值实测零差异。
+- **`python3` 可能是 Microsoft Store 的占位程序**（退出码 9009、什么都不干）→
+  用 `tools/lib/python.mjs` 探真 Python 3，别直接 `execFileSync('python3')`。
+- **CRLF 是坑**：Windows 下 Lua 的 stdout 是文本模式（`\n` → `\r\n`）。比对两边文本前先归一化行尾，
+  否则每行最后一列都假报不一致（parity 踩过，5702 处假差异）。
+- **本地试玩台**：`node miliastra/tools/sim-play.mjs --play`（在客户端 Lua 运行时里真跑；
+  模拟器默认找 `D:/miliastra-beyond-simulator`，可用 `ZUMA_SIM` 覆盖，没装则跳过）。
+  ⚠ 它跑在 Fengari 上、**整数是 32 位**，会让 `rng` 取到 nil → 画面上的白色空球是
+  **模拟器假象**，别当真机结论。
+- **`_verify/` 是本地草稿**，不进仓库（已在 `.gitignore`）。
+
 ## 现在在哪
 
-代码全写完，**本地验证全绿**（对拍 81339 个数值零差异 / Lua 侧 133 项断言 / 本体 546 项）。
-卡在"搬到千星沙箱编辑器里"：**云电脑不让访问游戏本地目录**，脚本映射建不起来。
-下一步的四条试法在 `HANDOFF.md` §6。
+代码全写完，**本地验证全绿**（对拍 81339 个数值零差异 / Lua 侧 164 项断言 / 本体 542 项 /
+客户端运行时试玩台跑通）。卡在"搬到千星沙箱编辑器里"：**云电脑不让访问游戏本地目录**，
+脚本映射建不起来。下一步的四条试法在 `HANDOFF.md` §6。
+
+⚠ 两条容易踩的：
+1. `miliastra/pc/zuma-pc.zip` 里那一份曾经是**会崩的旧版**（真机第一帧 `table index is nil`），
+   2026-09-25 已重打包；判断新旧看 `zuma.lua` 是不是 92,899 字节。
+2. **真机运行时契约四条**（`Id` 大写 / 只读字段 / OnStart 才能建控件 / EnableUpdate）
+   见 `HANDOFF.md` §10 —— 改表现层或宿主胶水前先看那一节。

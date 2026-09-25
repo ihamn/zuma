@@ -23,12 +23,20 @@ local function hexColor(s, fallback)
 end
 M.hexColor = hexColor
 
--- 每颗球要写进去的东西（脏检查的键）
-local BALL_KEYS = { 'anchoredPositionX', 'anchoredPositionY', 'sizeDeltaX', 'sizeDeltaY', 'visible' }
+-- ★★ 控件运行时 ID 的字段名：官方是 **`Id`（首字母大写）**。
+--    真机观察（客户端 Lua 运行时契约 §16）：「`Id`（客户端控件运行时ID，首字母大写）/ `prefabIndex`；
+--    旧 probe 中的 `control.id` / `prefabId` 是**旧版本接口，不作为兼容口径**」。
+--    原来这里写的是小写 `c.id` —— 真机上恒为 nil，于是 `ui.last[nil]` 直接报
+--    「table index is nil」，整局在第一帧就崩。本地假宿主提供的是小写 id，所以测试发现不了。
+--    两个都认：真机走 Id，本地假宿主走 id。
+local function ctrlId(c)
+  return c.Id or c.id
+end
 
 local function setField(ui, c, key, value)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
   if cache[key] == value then return false end
   cache[key] = value
   c[key] = value
@@ -36,8 +44,9 @@ local function setField(ui, c, key, value)
 end
 
 local function setColor(ui, c, hex)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
   if cache.__color == hex then return false end
   cache.__color = hex
   c.imageColor = hexColor(hex)
@@ -45,11 +54,25 @@ local function setColor(ui, c, hex)
 end
 
 local function setImage(ui, c, id)
-  local cache = ui.last[c.id]
-  if cache == nil then cache = {}; ui.last[c.id] = cache end
+  local key = ctrlId(c)
+  local cache = ui.last[key]
+  if cache == nil then cache = {}; ui.last[key] = cache end
   if cache.__image == id then return false end
   cache.__image = id
   c:SetImage(Enum.ImageSource.StaticReference, id)
+  return true
+end
+
+-- ★★ 可见性：官方契约里 `visible` 是**只读**字段 —— 读得到，**写会报**
+--    「cannot set visible, no such field」。改可见性必须调方法 SetVisible()。
+--    原来这里用 setField(..., 'visible', ...) 直接赋值，真机上一进 sync 就崩。
+local function setVisible(ui, c, v)
+  local id = ctrlId(c)
+  local cache = ui.last[id]
+  if cache == nil then cache = {}; ui.last[id] = cache end
+  if cache.__visible == v then return false end
+  cache.__visible = v
+  c:SetVisible(v)
   return true
 end
 
@@ -158,13 +181,13 @@ function M.sync(ui, sc, st)
       if setField(ui, c, 'anchoredPositionY', cy - b.y) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       if setField(ui, c, 'sizeDeltaX', d) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       if setField(ui, c, 'sizeDeltaY', d) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
-      if setField(ui, c, 'visible', true) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
+      if setVisible(ui, c, true) then ui.stats.ballWrites = ui.stats.ballWrites + 1 end
       -- 配错 = 灰球；已配对但还没定型，用原色（吸附飞行途中）
       local hex = b.wrongMark and CFG.WRONG_COLOR or (CFG.BASE_COLOR[b.base] or '#ffffff')
       setColor(ui, c, hex)
       setImage(ui, c, ui.art[b.base] or 1)
     else
-      setField(ui, c, 'visible', false)
+      setVisible(ui, c, false)
     end
   end
 
@@ -179,11 +202,11 @@ function M.sync(ui, sc, st)
       local d = 2 * p.r
       setField(ui, c, 'sizeDeltaX', d)
       setField(ui, c, 'sizeDeltaY', d)
-      setField(ui, c, 'visible', true)
+      setVisible(ui, c, true)
       setColor(ui, c, CFG.BASE_COLOR[p.base] or '#ffffff')
       setImage(ui, c, ui.art[p.base] or 1)
     else
-      setField(ui, c, 'visible', false)
+      setVisible(ui, c, false)
     end
   end
 
@@ -191,7 +214,7 @@ function M.sync(ui, sc, st)
   if ui.hud.rb then
     setField(ui, ui.hud.rb, 'anchoredPositionX', sc.rb.x - cx)
     setField(ui, ui.hud.rb, 'anchoredPositionY', cy - sc.rb.y)
-    setField(ui, ui.hud.rb, 'visible', true)
+    setVisible(ui, ui.hud.rb, true)
   end
 
   -- ---- HUD 文本 ----

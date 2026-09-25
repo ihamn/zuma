@@ -1,5 +1,9 @@
 -- 诊断能力的测试：**出错时屏幕上必须看得见**。
 -- 这一条很重要 —— 我在手机上看不到用户的电脑屏幕，那行字是唯一的线索。
+--
+-- ★★ 2026-09-25 改：真机上「控件只能在 OnStart 建」（OnInit 阶段 Instantiate 返回 nil），
+--   所以这里**按真机的两段式**驱动：beginInit/OnInit -> enterStart/OnStart。
+--   顺带就把"哪天有人把建控件挪回 OnInit"这件事钉死在这条测试里。
 
 local H = require('harness')
 local MOCK = require('mock')
@@ -27,11 +31,26 @@ local function newHost(opts)
   return host
 end
 
--- ① 正常：诊断行显示状态
+-- 像真机那样走一遍生命周期：OnInit（建不出控件）-> OnStart（才建得出来）
+local function lifecycle(host)
+  host.beginInit()
+  GAME.OnInit()
+  host.enterStart()
+  GAME.OnStart()
+  host.enterRunning()
+end
+
+-- ① 正常：OnInit 只登记不建控件；OnStart 之后才有控件和诊断行
 local h1 = newHost()
+h1.beginInit()
 GAME.OnInit()
+H.eq(GAME.error, nil, 'OnInit 不报错')
+H.eq(h1.stats.instantiated, 0, '★ OnInit 阶段一个控件都不建（真机：Instantiate 返回 nil）')
+H.eq(GAME.diagControl, nil, '★ OnInit 阶段还没有诊断控件')
+h1.enterStart()
+GAME.OnStart()
 H.eq(GAME.error, nil, '正常启动没有错误')
-H.truthy(GAME.diagControl, '诊断控件建出来了')
+H.truthy(GAME.diagControl, 'OnStart 之后诊断控件建出来了')
 H.truthy(GAME.diagControl.text:find('帧'), '诊断行有内容：' .. tostring(GAME.diagControl.text))
 H.truthy(GAME.diagControl.text:find('t1%-pair') ~= nil, '诊断行含关卡 id')
 GAME.OnUpdate(1 / 60)
@@ -39,7 +58,7 @@ H.truthy(GAME.diagControl.text:find('帧'), '每帧刷新')
 
 -- ② 光标检测区域创建失败：不能抛出去，要显示在屏幕上
 local h2 = newHost({ failCursor = true })
-GAME.OnInit()
+lifecycle(h2)
 H.truthy(GAME.error, '捕获到了错误')
 H.truthy(GAME.error:find('光标检测区域') ~= nil, '错误信息指明了是哪一步：' .. tostring(GAME.error))
 H.eq(GAME.screen, 'error', '屏幕状态变成 error')
@@ -49,13 +68,13 @@ H.truthy(GAME.diagControl.text:sub(1, 2) == '!!', '出错后每帧仍然显示�
 
 -- ③ 连挂载控件都找不到：也要被 pcall 接住（只是屏幕上没地方显示）
 local h3 = newHost({ noRoot = true })
-GAME.OnInit()
+lifecycle(h3)
 H.truthy(GAME.error, '没有挂载控件时也捕获到错误')
 H.truthy(GAME.error:find('找不到挂载控件') ~= nil, '错误信息可读：' .. tostring(GAME.error))
 
 -- ④ 恢复：还能正常再来一次（不要卡死在 error 状态）
 local h4 = newHost()
-GAME.OnInit()
+lifecycle(h4)
 H.eq(GAME.error, nil, '重新初始化后错误被清掉')
 H.eq(GAME.screen, 'playing', '回到 playing')
 GAME.OnUpdate(1 / 60)

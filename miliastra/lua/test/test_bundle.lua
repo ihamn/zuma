@@ -45,10 +45,14 @@ host.params.autoNext = 0
 MOCK.install(host)
 host.scriptObj.object = host.root
 
+-- ★ 按真机的两段式走：OnInit 阶段建不出控件（Instantiate 返回 nil），OnStart 才建得出来
+host.beginInit()
 OnInit()
+host.enterStart()          -- ← 这一步就是"真机到了 OnStart 才建得出控件"的那条线
 OnStart()
+host.enterRunning()
 local info = Z.game.info()
-H.eq(info.level, 't1-pair', 'OnInit 后进了第一关：' .. tostring(info.level))
+H.eq(info.level, 't1-pair', 'OnStart 后进了第一关：' .. tostring(info.level))
 H.eq(info.screen, 'playing', '屏幕状态 playing')
 local okb, cnt, glim = host.assertControlBudget()
 H.ok(okb, '控件 ' .. cnt .. ' 个，上限 ' .. glim)

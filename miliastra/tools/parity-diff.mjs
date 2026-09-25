@@ -57,7 +57,9 @@ if (lua.code !== 0) {
   console.error('Lua 侧执行失败：\n' + (lua.stderr || lua.stdout));
   process.exit(2);
 }
-const lt = lua.stdout.replace(/\n$/, '').split('\n');
+// ★ Windows 上 Lua 的 stdout 是文本模式（'\n' -> '\r\n'），要归一化，否则每行最后一列都假差异。
+//   与 parity.mjs 同一个坑，见那边的注释。
+const lt = lua.stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n$/, '').split('\n');
 
 if (js.length !== lt.length) console.log('!! 行数不同：JS ' + js.length + ' / Lua ' + lt.length);
 const n = Math.min(js.length, lt.length);

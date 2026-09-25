@@ -79,9 +79,11 @@ host.tick(0.5)
 H.near(ball.anchoredPositionX, 500, 1e-6, '补间到位')
 
 -- 脚本生命周期
+-- ★★ 真机契约：**EnableUpdate 前没有 OnUpdate**。所以这里的 mock 脚本必须先打开它，
+--   而且打开之前 tick 不该产生任何回调（这一段就是那条契约的回归测试）。
 local ticks = 0
 host.mount({
-  OnInit = function() end,
+  OnInit = function() script:EnableUpdate(true) end,
   OnUpdate = function(dt) ticks = ticks + 1 end,
 })
 host.tick(1 / 60)
@@ -91,6 +93,36 @@ script:EnableUpdate(false)
 host.tick(1 / 60)
 H.eq(ticks, 2, 'EnableUpdate(false) 之后不再 OnUpdate')
 script:EnableUpdate(true)
+
+-- ★★ 真机契约（这几条是 2026-09-25 那个"真机第一帧就崩"的坑换来的，别再丢）
+-- ① 生命周期：OnInit / OnDestroy 阶段 Instantiate 返回 nil
+host.prefabs[5] = 'image'
+host.beginInit()
+H.eq(game.InstantiateClientUIControl(5, host.root), nil, '★ OnInit 阶段 Instantiate 返回 nil')
+host.enterStart()
+
+-- ② 控件标识字段是 `Id`（大写）；旧接口 `id` **不作为口径**，读出来就是 nil
+local c2 = game.InstantiateClientUIControl(5, host.root)
+H.truthy(c2, '★ OnStart 阶段才建得出控件')
+host.enterRunning()
+H.truthy(c2.Id, '★ 控件有 Id 字段（大写）：' .. tostring(c2.Id))
+H.eq(c2.id, nil, '★ 小写 id 读为 nil（真机就是 nil —— ui.lua 曾经栽在这）')
+
+-- ③ 只读字段：读得到，写会报 "cannot set <字段>, no such field"
+H.eq(c2.visible, true, 'visible 读得到（值来自模板/宿主）')
+local okRo, errRo = pcall(function() c2.visible = false end)
+H.eq(okRo, false, '★ 直接写 visible 要报错')
+H.truthy(tostring(errRo):find('no such field') ~= nil, '★ 报错原话：' .. tostring(errRo))
+local okRo2, errRo2 = pcall(function() c2.active = true end)
+H.eq(okRo2, false, '★ 直接写 active 也要报错：' .. tostring(errRo2))
+H.eq(pcall(function() c2.notAField = 1 end), false, '★ 白名单外的字段写会报错（真机契约 §12）')
+H.eq(c2.notAField, nil, '★ 白名单外的字段读为 nil')
+H.truthy(c2:SetVisible(false), 'SetVisible 才是改可见性的正道')
+H.eq(c2.visible, false, 'SetVisible(false) 之后读出来是 false')
+
+-- ④ game 的函数是点号调用的；用冒号会把 game 自己塞进去（真机报 bad argument count）
+local okColon, errColon = pcall(function() game:GetUICanvasSize() end)
+H.eq(okColon, false, '★ game:方法() 冒号调用要报错：' .. tostring(errColon))
 
 -- 服务端信号
 local sig = game.ServerSignal('zuma.evt')

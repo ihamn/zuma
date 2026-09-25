@@ -14,6 +14,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from './lib/lua-runner.mjs';
+import { findPython } from './lib/python.mjs';
 
 const LUA = path.join(ROOT, 'out', 'zuma.lua');
 const PC = path.join(ROOT, 'pc');
@@ -69,6 +70,10 @@ const py = [
   'print(os.path.getsize(out))',
 ].join('\n');
 
-const size = execFileSync('python3', ['-c', py, PC, OUT, readmePath], { encoding: 'utf8' }).trim();
+// 用 python 的 zipfile：本机不一定有 zip 命令，而且中文文件名要 UTF-8 标志位。
+// ★★ 2026-09-25 电脑端补：Windows 上 `python3` 常常只是 Microsoft Store 的**占位程序**
+//    （跑起来退出码 9009、什么都不干），所以解释器统一由 lib/python.mjs 去探。
+const PY = findPython();
+const size = execFileSync(PY.cmd, [...PY.prefix, '-c', py, PC, OUT, readmePath], { encoding: 'utf8' }).trim();
 console.log('打包电脑端：pc/zuma-pc.zip（' + size + ' 字节）');
 console.log('  zuma.lua：' + luaBytes.length + ' 字节  sha256=' + sha.slice(0, 16) + '…');

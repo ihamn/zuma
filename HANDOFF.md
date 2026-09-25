@@ -1,7 +1,7 @@
 # 交接：这个项目怎么一步步走到今天的
 
 > 给**新会话**看的。读完这一份 + `AGENTS.md`，你应该能无缝接手，不需要翻聊天记录。
-> 最后更新：2026-09-25（本次会话结束时）。
+> 最后更新：2026-09-25（电脑端会话收尾：真机契约修复 + 重打包 + 试玩台）。
 
 ---
 
@@ -11,8 +11,8 @@
 |---|---|
 | **是什么** | RNA 主题的祖玛。双轨道：出球道自动冒碱基（mRNA），玩家往三消道发 tRNA 珠做互补配对；**连续配对段长度是 3 的倍数**才消除；配错不扣分，而是触发**可连锁的爆炸** |
 | **两个产物** | ① 网页版游戏本体（`src/` + `tools/`，纯前端单文件）② **千星奇域移植**（`miliastra/`，整个游戏翻译成 Lua 客户端脚本） |
-| **现在在哪** | **代码全写完了，本地验证全绿**。卡在"搬到千星沙箱编辑器里"这一步 —— 见 §6 |
-| **下一步** | 在云电脑的千星沙箱里，让脚本映射建起来（详见 §6 和第 7 节的三条路） |
+| **现在在哪** | 代码全写完，**本地验证全绿**（对拍 81339 值零差异 / Lua 侧 164 项 / 本体 542 项 / 客户端运行时试玩台跑通）。卡在"搬到千星沙箱编辑器里"—— 见 §6 |
+| **下一步** | 把 §6 的四步试完（脚本映射）；动手前先看 §11：**下载链接发出去的 zuma.lua 曾经是会崩的旧版，已重打包** |
 | **仓库** | https://github.com/ihamn/zuma |
 
 ---
@@ -103,13 +103,18 @@
 | 层 | 命令 | 当前数字 |
 |---|---|---|
 | ① JS↔Lua 逐值对拍 | `node miliastra/tools/parity.mjs` | **308 条命令 / 5702 行 / 81339 个数值，零差异** |
-| ② Lua 沙箱检查 | `node miliastra/tools/check-lua-sandbox.mjs` | 14 文件 / 2618 行，0 问题 |
-| ③ Lua 侧测试（假宿主） | `node miliastra/tools/test-lua.mjs` | **133 项断言**（含**打包产物**端到端跑通一整关） |
-| ④ 本体回归 | 11 个 `tools/test-*.mjs` + `smoke.mjs` | **546 项全绿** |
+| ② Lua 沙箱检查 | `node miliastra/tools/check-lua-sandbox.mjs` | 14 文件 / 2782 行，0 问题 |
+| ③ Lua 侧测试（假宿主） | `node miliastra/tools/test-lua.mjs` | **164 项断言**（含打包产物端到端跑通一整关 + 8 项真机契约断言） |
+| ④ 客户端运行时试玩台 | `node miliastra/tools/sim-play.mjs --level=6 --frames=260 --play` | 114 个控件建出来，整关推进（没装模拟器则跳过） |
+| ⑤ 本体回归 | 9 个 `tools/test-*.mjs`（460 项）+ `smoke.mjs`（82 项） | **542 项全绿** |
 
 **对拍工具怎么用**：`parity.mjs` 生成一份命令表，JS 侧（`tools/lib/parity-js.mjs`）和
 Lua 侧（`lua/parity/run.lua`）各写一个解释器执行它 —— **场景只写一次**，不会两边漂。
 失败了用 `tools/parity-diff.mjs` 定位**第一个分叉**。
+
+⚠ 电脑端两个环境坑已经写进代码，不用再踩：Windows 上 `python3` 常是 Microsoft Store 的占位程序
+（`lib/python.mjs` 绕开）、Lua 解释器路径原来写死在 `vendor/bin/lua`（`lib/lua-runner.mjs` 现在按
+`ZUMA_LUA` > vendor > PATH > Windows 默认安装位置 找，并报版本）。见 §9。
 
 ---
 
@@ -151,19 +156,26 @@ Lua 侧（`lua/parity/run.lua`）各写一个解释器执行它 —— **场景�
 
 **已经准备好的**：`miliastra/pc/` 里有
 - `manual.html` —— 电脑端操作手册（4 步 + 出错对照表）
-- `hello.lua` —— **3 KB 的最小验证脚本**（先验管线，再上 89 KB 的正主）
+- `hello.lua` —— **5 KB 的最小验证脚本**（先验管线，再上 91 KB 的正主）
 - `zuma.lua` —— 打包好的正式脚本（14 模块）
 - `zuma-pc.zip` —— 上面三样打成一包
+
+★ 2026-09-25 更新：这两个脚本现在都**对齐了真机运行时契约**（§10）——
+只要映射建起来、脚本挂上客户端控件，**第一帧不会再崩**；而且失败时游戏日志里会有
+`[zuma] …` 的 print（print 不需要控件，白屏也能看到死在哪一步）。
+把日志里那几行 `[zuma]` 念出来，就能判断是"没进 OnInit"还是"挂载点不对"。
 
 ---
 
 ## 7. 下一步（按优先级）
 
-1. **【最高】把 §6 那四步试完** —— 这是唯一挡着"能玩上"的事
+1. **【最高】把 §6 那四步试完** —— 这是唯一挡着"能玩上"的事。
+   先上 `hello.lua`（5 KB）验管线，再上 `zuma.lua`；两者都会打 `[zuma]` / `[hello]` 日志。
 2. 通了之后：在编辑器里搭 M1/M2（4 个控件模板 + 脚本映射 + 脚本变量），实测帧率
 3. 选关菜单 / 结算界面 / 模式按钮 / 音效（M3/M4）
 4. 把 §5 那四条本体问题拿回本体侧决定
 5. 七球模式（元素反应）是否移植 —— 用户说过"先不管"
+6. 想更快看到效果：`node miliastra/tools/sim-play.mjs --play --json=…` + `sim-render.mjs`（§11 第 4 条）
 
 ---
 
@@ -175,8 +187,73 @@ Lua 侧（`lua/parity/run.lua`）各写一个解释器执行它 —— **场景�
 | 路线 A / Lua 路线 | 主路线：客户端 Lua 脚本 + 客户端控件当画面 |
 | 路线 B / 槽位路线 | 备用：节点图 + 场景实体 + 离散槽位（已降级，资产保留） |
 | 对拍 / parity | JS 与 Lua 跑同一份命令表，逐值比对 |
-| 假宿主 / mock | `lua/host/mock.lua`：照官方 API 做的无头环境，让表现层能本地验 |
+| 假宿主 / mock | `lua/host/mock.lua`：照官方 API **+ 真机契约**做的无头环境，让表现层能本地验 |
+| 真机契约 | 真机探测出来的运行时行为（`Id` 大小写、只读字段、OnStart 才能建控件、EnableUpdate…），见 §10 |
+| 试玩台 / sim | `tools/sim-play.mjs`：在**千星客户端 Lua 运行时模拟器**里真跑我们的脚本 |
 | 静止练习关 | 没有轨道、不前进、无洞穴的教学关（§63） |
 | 3n 消 | 连续读出的段长度为 3 的倍数才整段消除 |
 | mark 2 / 灰球 | 配错的球，等左右同为已读时才连爆 3 颗 |
 | 千星沙箱 | 原神千星奇域的 PC 端编辑器 |
+
+---
+
+## 9. 电脑端（Windows）工具链怎么落地（2026-09-25）
+
+原来 `run-all` 在这台电脑上**全红**，但红的是环境不是代码：
+
+| 症状 | 原因 | 现在的做法 |
+|---|---|---|
+| `没找到 Lua 解释器：vendor/bin/lua` | `vendor/` 不进仓库，Windows 上又没有 bash/gcc 跑 `build-lua.sh` | `lib/lua-runner.mjs` 按 `ZUMA_LUA` > `vendor/bin/lua[.exe]` > PATH(`lua5.3`/`lua53`/`lua`) > `%LOCALAPPDATA%\Programs\Lua\bin\lua.exe` 找，**并在 run-all 第一行报版本** |
+| `pack-pc.mjs` 退出码 9009 | `python3` 是 Microsoft Store 的占位程序（跑起来什么都不干） | `lib/python.mjs` 按 `ZUMA_PYTHON` > `python3` > `python` > `py -3` 探一个真的 Python 3 |
+| 对拍报 **5702 处不一致**，可两边打印出来的数字一模一样 | Windows 下 Lua 的 stdout 是文本模式（`\n` → `\r\n`），每行**最后一列**多了个看不见的 `\r` | `parity.mjs` / `parity-diff.mjs` 先归一化行尾 |
+
+本机装的是 **Lua 5.4.6**（`winget install DEVCOM.Lua`，落在 `%LOCALAPPDATA%\Programs\Lua`）。
+千星奇域是 **5.3**；5.4 跑出来的 81339 个对拍值**与 5.3 全一致**，但版本提醒会一直挂在
+run-all 第一行 —— 想严格对齐就装一个 5.3，或 `set ZUMA_LUA=...`。
+手机端不受影响（`vendor/bin/lua` 由 `build-lua.sh` 产出，优先级更高）。
+
+---
+
+## 10. 真机运行时契约：一次"本地全绿、真机第一帧就崩"的教训
+
+2026-09-25 从真机探针（社区模拟器 `miliastra-beyond-simulator` 的
+`client/lua-runtime/docs/observed-contract.md`）+ 官方《客户端控件 API 文档》核出四条硬限制，
+它们让**已经打包发出去的那一版 `zuma.lua` 在真机上必崩**：
+
+| # | 真机行为 | 原来错在哪 |
+|---|---|---|
+| 1 | 控件 ID 字段是 **`Id`**（大写），小写 `id` 读出来是 nil | `ui.last[c.id]` → `table index is nil`，**第一帧崩**，且因为"报错那行字"本身也是控件，屏幕全白无提示 |
+| 2 | `visible`/`active`/`alive`/`prefabIndex` **只读**，写报 `cannot set X, no such field` | `setField(c,'visible',…)` 直接赋值 |
+| 3 | `InstantiateClientUIControl` 在 **OnInit 阶段返回 nil**，`OnStart` 才建得出来 | 原来在 `OnInit` 里建控件池 → 一个都没建出来 |
+| 4 | **`EnableUpdate` 前没有 `OnUpdate`** | 不打开 → 画面永远不动 |
+
+另一条：`game` 的函数是**点号调用**，`game:GetUICanvasSize()` 真机报
+`bad argument count … (0 expected, got 1)`。
+
+**为什么这次拦住了**：假宿主不是"照文档写个大概"，而是**照真机把字段和生命周期封死** ——
+字段白名单（表外读 nil、写报错）、`Id` 大小写、只读字段、`idle/init/enable/start/running/destroy`
+阶段、`EnableUpdate` 默认关、点号调用检查。契约断言在 `lua/test/test_mock.lua`、
+`test_diag.lua`、`test_bundle.lua` 里（共 8 条，都带 ★）。
+**教训**：本地测试之所以先把 `c.id` 放过去，是因为假宿主"什么字段都收" —— 坏的不是测试写少了，
+而是**被测环境比真机宽松**。
+
+---
+
+## 11. 这一轮收尾改了什么（电脑端会话，2026-09-25）
+
+上一段电脑端会话在 2:17 改完源码后被打断（C 盘 `.dsh` 被清空，会话记录丢了，**产物没丢**）。
+这一轮把最后一段做完：
+
+1. **真机契约四条**落到 `lua/src/game.lua`、`ui.lua`、`pc/hello.lua`（源码改动主要是这三处）。
+2. **假宿主照真机封死** + 8 条契约断言 → Lua 侧断言 133 → **164 项**。
+3. **工具链在 Windows 上跑通**（§9），`run-all` 从"3 步失败"变成**全部通过**。
+4. **本地试玩台**收进仓库：`tools/sim-play.mjs`（在客户端运行时里真跑）+ `tools/sim-render.mjs`
+   （把控件树画成 PNG），并接进 `run-all`（没装模拟器就跳过）。
+5. **重打包电脑端**：`pc/zuma-pc.zip` 里的 `zuma.lua` 之前是 2:04 那一份（**会崩的旧版**），
+   现在是修复版；`DOWNLOADS.md` 里的字节数/sha256 已同步更新。
+
+⚠ 试玩台的已知假象（**别当真机结论**）：模拟器跑在 Fengari 上，**整数是 32 位**
+（`0xFFFFFFFF == -1`），`rng.lua` 的掩码收不回无符号数 → `step()` 取值域变 `[-0.5, 0.5)`，
+`rng.pick` 约一半取到 nil → 画面上出现**白色空球**。实测越界 10101/20000 次。
+真机是 Lua 5.3（64 位）不会这样，本地对拍用的原生 Lua 也不会。
+`sim-play.mjs` 会自己探整数位宽并警告，`sim-render` 把白球画成带 `?` 的空心圆。
