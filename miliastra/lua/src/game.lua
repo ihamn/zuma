@@ -78,6 +78,11 @@ local function buildHudSpecs(w, h)
     { key = 'lives', x = halfW - 120 - pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'right' },
     { key = 'runs', x = -halfW + 220 + pad, y = halfH - 84 - pad, w = 440, h = 40, size = 26, align = 'left' },
     { key = 'mode', x = -halfW + 120 + pad, y = -halfH + 32 + pad, w = 240, h = 44, size = 26, align = 'left' },
+    -- ★★ 两条"教玩家怎么打"的诊断行（都在左上、不挡棋盘）：
+    --   mate：手里这颗该打谁（A 要打 U/T）—— 这才是 RNA 的规则，不是"同色消除"
+    --   hit ：最近一次命中的判定（配对 ✅ / 错配 ❌），省得去翻日志
+    { key = 'mate', x = -halfW + 120 + pad, y = halfH - 178 - pad, w = 640, h = 36, size = 22, align = 'left' },
+    { key = 'hit', x = -halfW + 120 + pad, y = halfH - 136 - pad, w = 640, h = 36, size = 22, align = 'left' },
     { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center', panel = 'light' },
     -- 结果框在正中央：**平时没有文字**，所以不给底板（给了就是一块盖住核糖体的黑板）
     { key = 'result', x = 0, y = 0, w = math.min(w - 40, 640), h = 120, size = 40, align = 'center', panel = false },
@@ -329,9 +334,34 @@ function G.boot()
   G.cursorArea:SetSizeDelta(w, h)
   say('玩区 = %s / 光标区 = %s', tostring(G.area), tostring(G.cursorArea))
 
+  -- ★ 球面素材 id：默认**不打补丁**（球就用模板自带那张图）。
+  --   真机踩过：写死 SetImage(1..5) 时每颗球都画成"**?**"—— 编辑器里的素材 id 不是 1..5。
+  --   要指定就填 art=A:1073741860,U:1073741861,G:...,C:...,T:...（id 在编辑器点开素材能看到）
+  local art = {}
+  do
+    local spec = param('art', '')
+    if type(spec) == 'string' and spec ~= '' then
+      for pair in string.gmatch(spec, '[^,;%s]+') do
+        local k, v = string.match(pair, '([AUGC]):(%d+)')
+        if k and v then art[k] = tonumber(v) end
+      end
+    end
+    if next(art) then
+      local parts = {}
+      for i = 1, #CFG.BASES do
+        local b = CFG.BASES[i]
+        if art[b] then parts[#parts + 1] = b .. '=' .. tostring(art[b]) end
+      end
+      say('球面素材 id：%s', table.concat(parts, ' '))
+    else
+      say('球面素材：不指定 → 用模板自带那张图（不再强制 SetImage，免得真机画成"?"）')
+    end
+  end
+
   G.ui = UI.create({
     parent = G.area,
     canvas = G.canvas,
+    art = art,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,
@@ -367,6 +397,21 @@ function G.boot()
 
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
+
+  -- ★★ 碱基抽样（排"打中全变灰 / 球发白"这类问题用）：
+  --   若这里打出 nil，说明真机上**碱基没生成出来** → 球会是白的、且每次命中都判"错配"。
+  --   若碱基正常而命中仍判错配，那就是"打中的是旁边那颗"（碰撞/瞄准）问题。
+  do
+    local balls = G.sc and G.sc.chain and G.sc.chain.balls or {}
+    local sample = {}
+    for i = 1, math.min(#balls, 8) do sample[#sample + 1] = tostring(balls[i].base) end
+    say('球碱基抽样（共 %s 颗，前 8）：%s', tostring(#balls), table.concat(sample, ' '))
+    local rb = G.sc and G.sc.rb or nil
+    if rb and rb.loaded then
+      say('核糖体待发碱基：%s / %s', tostring(rb.loaded[1]), tostring(rb.loaded[2]))
+    end
+    say('本关允许的碱基：%s', table.concat(G.sc and G.sc.bases or {}, ' '))
+  end
   return G
 end
 
@@ -488,6 +533,20 @@ end
 
 -- 给 ui.sync 的那一小包"表现层才关心的东西"
 -- dt：动效要按时间推进；events：board 攒的事件（清段/爆炸/命中），表现层拿去播一次性动效
+-- ★★ 教玩家怎么打：手里这颗该打谁。
+--   这是本作最容易误解的一点 —— 它是 **RNA 互补配对**（A↔U/T、G↔C），
+--   **不是**祖玛那种"同色三消"。真机上用户"打中了却变灰"，九成就是打了同字母的球。
+function G.mateText()
+  if not G.sc or G.sc.mode ~= 'match' then return '' end
+  local rb = G.sc.rb
+  local b = rb and rb.loaded and rb.loaded[1]
+  if not b then return '' end
+  local c = CFG.COMPLEMENT[b] or {}
+  if #c == 0 then return '手里 ' .. tostring(b) end
+  -- ⚠ 文本框宽度有限（640），太长会被裁掉 —— 规则说明放在关卡提示里，这里只给结论
+  return '手里 ' .. tostring(b) .. ' → 打 ' .. table.concat(c, '/') .. ' 的球'
+end
+
 function G.syncState(dt)
   local lines = {}
   if G.level and G.level.hint then
@@ -500,11 +559,34 @@ function G.syncState(dt)
   elseif G.screen == 'lost' then
     lines = { '命数用尽  按 R 重来' }
   end
+  -- ★★ 判定诊断：每次命中都打一行「弹丸碱基 vs 目标球碱基 → 配对/错配」。
+  --   真机第一次试玩"打中全变灰、也不进三消道"就只能靠这种行定位
+  --   （要么碱基是 nil，要么判定反了，要么命中的是旁边那颗）。
+  local events = G.sc and BOARD.drainEvents(G.sc) or nil
+  if events then
+    for i = 1, #events do
+      local e = events[i]
+      -- 事件的字段（见 board.resolveHit）：base = **弹丸**的碱基，target = **被打中那颗球**的碱基
+      if e.type == 'pair' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 打中球 ' .. tostring(e.target) .. ' → 配对 ✅'
+        say('%s', G.lastHit)
+      elseif e.type == 'mismatch' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 打中球 ' .. tostring(e.target)
+          .. ' → 错配 ❌（球变灰、绑定球也是灰的）'
+        say('%s', G.lastHit)
+      elseif e.type == 'insert' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 并入球 ' .. tostring(e.target) .. '（加球模式）'
+        say('%s', G.lastHit)
+      end
+    end
+  end
   return {
     dt = dt,
-    events = G.sc and BOARD.drainEvents(G.sc) or nil,   -- ★ 只有一个消费者：这里取走，别处再取就没了
+    events = events,   -- ★ 只有一个消费者：这里取走，别处再取就没了
     mode = G.sc and G.sc.mode or 'match',
     hintLines = lines,
+    lastHit = G.lastHit,
+    mate = G.mateText and G.mateText() or nil,
   }
 end
 

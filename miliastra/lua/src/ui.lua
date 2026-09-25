@@ -59,6 +59,8 @@ local C = {
   cd = '#96c8ff5c',         -- 冷却环
   roadOuter = '#16202ea6',  -- 出球道路面（大球那条轨）
   roadInner = '#1d2b3ca6',  -- 三消道路面（小球那条轨）
+  railLine = '#7f9dc94d',   -- 导轨细线（本体 drawTrackLayer 画的两条细亮线，很提神）
+  backdrop = '#0b1119d9',   -- 整块背板（半透明深色）：让画面像个界面，而不是浮在关卡场景上
   caveCore = '#0a060ad9',   -- 洞穴中心
   -- 三层红晕（本体是径向渐变）：**要克制** —— 第一版给太大太红，整个洞口像块红布
   caveGlow = { '#ff5a6e40', '#ff5a6e26', '#ff5a6e14' },
@@ -122,13 +124,27 @@ local function invalidateColor(ui, c)
   cache.__color = nil
 end
 
+-- 图片素材 id：**默认不动**
+--   ★ 血泪（2026-09-25 真机）：第一版把它写死成 `SetImage(1..5)`，而编辑器里的**素材 id
+--     不是 1..5**（和控件模板索引一样是大数字，形如 1073741xxx）→ 找不到素材，
+--     真机上每颗球都画成"**?**"贴图。
+--   现在：`art` 为空 = **一次 SetImage 都不调**，球就用**你模板里那张图**（编辑器里配的），
+--   我们只负责改颜色/位置/大小 + 叠一层字母文本框。
+local function artIdOf(ui, base)
+  if base == nil then return nil end
+  local a = ui.art
+  return a and a[base] or nil
+end
+
 local function setImage(ui, c, id)
+  if id == nil then return false end
   local cache = cacheOf(ui, c)
   if cache.__image == id then return false end
   cache.__image = id
   c:SetImage(Enum.ImageSource.StaticReference, id)
   return true
 end
+M.setImageById = setImage
 
 -- ★★ 可见性：官方契约里 `visible` 是**只读**字段 —— 读得到，**写会报**
 --    「cannot set visible, no such field」。改可见性必须调方法 SetVisible()。
@@ -162,7 +178,7 @@ local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex, artId)
   if len < 1e-6 then setVisible(ui, c, false); return end
   place(ui, c, cx, cy, (x1 + x2) / 2, (y1 + y2) / 2, len, w, rotDeg(dx, dy))
   setColor(ui, c, hex)
-  setImage(ui, c, artId or 1)
+  setImage(ui, c, artId)        -- nil = 不动素材（用模板自带那张）
 end
 
 -- 把一个控件当"一颗球"用
@@ -170,7 +186,7 @@ local function placeBead(ui, c, cx, cy, x, y, r, hex, artId)
   local d = 2 * r
   place(ui, c, cx, cy, x, y, d, d, 0)
   setColor(ui, c, hex)
-  setImage(ui, c, artId or 1)
+  setImage(ui, c, artId)        -- nil = 不动素材
 end
 
 -- 柔边（发光）：图片控件没有描边，靠 enableSoftEdge 做"糊一圈"的效果
@@ -227,11 +243,9 @@ function M.create(opts)
     stats = { writes = 0, ballWrites = 0, hudWrites = 0 },
   }
 
-  local art = opts.art or {}
-  if not next(art) then
-    for i = 1, #CFG.BASES do art[CFG.BASES[i]] = i end
-  end
-  ui.art = art
+  -- ★ 素材 id：**默认不打补丁**（见文件顶部 artIdOf 的注释 —— 写死 1..5 会让真机全画成"?"）
+  --   opts.art 给了才用；键是碱基（A/U/G/C/T），值是编辑器里那张图的素材 id。
+  ui.art = opts.art or {}
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -258,6 +272,16 @@ function M.create(opts)
 
   local n = opts.ballCount or 96
   local sn = opts.shotCount or 8
+
+  -- ⓪ "底"：一整块深色背板（用户反馈"没有底"）—— 只花 1 个控件，先建所以画在最底下。
+  --    半透明（留一点关卡场景透出来），有它整局才像"一个界面"而不是浮在半空。
+  --    backdrop = 0 可关掉（编辑器里自己摆了底图就用 0）。
+  if opts.backdrop ~= 0 then
+    local bg = build(ballPrefab, '背板控件', 1)
+    setColor(ui, bg, C.backdrop or '#0b1119d9')
+    softEdge(bg, false, 0)
+    ui.backdrop = bg
+  end
 
   -- ① 轨道（最底下）：一段段"棒"拼成两条轨路面
   if ui.trackOn ~= 0 then
@@ -357,8 +381,13 @@ end
 -- 轨道用"一段段棒"拼：本体 drawTrackLayer 是 canvas 描线，图片控件只能这样近似。
 -- 只在换关时写一次（静态），每帧不碰 —— 所以哪怕 128 个控件也不吃帧预算。
 local function placeTrack(ui, sc)
-  if ui.trackOn == 0 or #ui.track == 0 then return end
   local cx, cy = sc.view.cx, sc.view.cy
+  -- ⓪ 背板：铺满画布的一大块（每次尺寸变了才写）
+  if ui.backdrop then
+    place(ui, ui.backdrop, cx, cy, cx, cy, sc.view.w, sc.view.h, 0)
+    setVisible(ui, ui.backdrop, true)
+  end
+  if ui.trackOn == 0 or #ui.track == 0 then return end
   local mt = sc.metrics
   local key = tostring(sc.level and sc.level.id) .. '#' .. tostring(math.floor(sc.path.length)) ..
     '#' .. tostring(sc.rails and sc.rails.spawn and sc.rails.spawn.offset or 0)
@@ -487,7 +516,7 @@ function M.sync(ui, sc, st)
       -- 配错 = 灰球；已配对但还没定型，用原色（吸附飞行途中）
       local hex = b.wrongMark and CFG.WRONG_COLOR or baseColor(b.base)
       setColor(ui, c, hex)
-      setImage(ui, c, ui.art[b.base] or 1)
+      setImage(ui, c, artIdOf(ui, b.base))
 
       -- 光晕：读出/配错才亮（本体 drawBead 的 glow / pairGlow）
       if ui.halo[i] then
@@ -523,7 +552,7 @@ function M.sync(ui, sc, st)
     local e = elim[i]
     if e then
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
-        e.wrong and CFG.WRONG_COLOR or baseColor(e.base), ui.art[e.base] or 1)
+        e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
       local pid = e.partner and e.partner.id
       if pid ~= nil then
         liveElim[pid] = true
@@ -605,7 +634,7 @@ function M.sync(ui, sc, st)
     local c = ui.shots[i]
     local p = shots[i]
     if p then
-      placeBead(ui, c, cx, cy, p.x, p.y, p.r, baseColor(p.base), ui.art[p.base] or 1)
+      placeBead(ui, c, cx, cy, p.x, p.y, p.r, baseColor(p.base), artIdOf(ui, p.base))
     else
       setVisible(ui, c, false)
     end
@@ -616,7 +645,7 @@ function M.sync(ui, sc, st)
   for i = 1, #ui.merges do
     local m = merges[i]
     if m then
-      placeBead(ui, ui.merges[i], cx, cy, m.x, m.y, m.r, baseColor(m.base), ui.art[m.base] or 1)
+      placeBead(ui, ui.merges[i], cx, cy, m.x, m.y, m.r, baseColor(m.base), artIdOf(ui, m.base))
     else
       setVisible(ui, ui.merges[i], false)
     end
@@ -648,9 +677,9 @@ function M.sync(ui, sc, st)
     local bR = (sc.mode == 'insert') and mt.R or mt.r
     local b1, b2 = rb.loaded and rb.loaded[1], rb.loaded and rb.loaded[2]
     placeBead(ui, ui.loaded[1], cx, cy,
-      rb.x + ax * R * 0.8, rb.y + ay * R * 0.8, bR, baseColor(b1), ui.art[b1] or 1)
+      rb.x + ax * R * 0.8, rb.y + ay * R * 0.8, bR, baseColor(b1), artIdOf(ui, b1))
     placeBead(ui, ui.loaded[2], cx, cy,
-      rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), ui.art[b2] or 1)
+      rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), artIdOf(ui, b2))
   end
 
   -- ---- 开火后坐（stats.fired 涨了就弹一下）----
@@ -685,6 +714,9 @@ function M.sync(ui, sc, st)
   end
   text('runs', '连读 ' .. (#runs > 0 and table.concat(runs, ' ') or '—'))
   text('mode', st.mode == 'insert' and '模式：加球' or '模式：配对')
+  -- 判定诊断行（st.lastHit / st.mate 由 game.lua 填）：屏幕上直接看得到"这次算配对还是错配"
+  if ui.hud.hit then text('hit', st.lastHit or '') end
+  if ui.hud.mate then text('mate', st.mate or '') end
   if ui.hud.hint then
     text('hint', st.hintLines and table.concat(st.hintLines, '\n') or '')
   end

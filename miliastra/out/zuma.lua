@@ -2207,6 +2207,8 @@ local C = {
   cd = '#96c8ff5c',         -- 冷却环
   roadOuter = '#16202ea6',  -- 出球道路面（大球那条轨）
   roadInner = '#1d2b3ca6',  -- 三消道路面（小球那条轨）
+  railLine = '#7f9dc94d',   -- 导轨细线（本体 drawTrackLayer 画的两条细亮线，很提神）
+  backdrop = '#0b1119d9',   -- 整块背板（半透明深色）：让画面像个界面，而不是浮在关卡场景上
   caveCore = '#0a060ad9',   -- 洞穴中心
   -- 三层红晕（本体是径向渐变）：**要克制** —— 第一版给太大太红，整个洞口像块红布
   caveGlow = { '#ff5a6e40', '#ff5a6e26', '#ff5a6e14' },
@@ -2270,13 +2272,27 @@ local function invalidateColor(ui, c)
   cache.__color = nil
 end
 
+-- 图片素材 id：**默认不动**
+--   ★ 血泪（2026-09-25 真机）：第一版把它写死成 `SetImage(1..5)`，而编辑器里的**素材 id
+--     不是 1..5**（和控件模板索引一样是大数字，形如 1073741xxx）→ 找不到素材，
+--     真机上每颗球都画成"**?**"贴图。
+--   现在：`art` 为空 = **一次 SetImage 都不调**，球就用**你模板里那张图**（编辑器里配的），
+--   我们只负责改颜色/位置/大小 + 叠一层字母文本框。
+local function artIdOf(ui, base)
+  if base == nil then return nil end
+  local a = ui.art
+  return a and a[base] or nil
+end
+
 local function setImage(ui, c, id)
+  if id == nil then return false end
   local cache = cacheOf(ui, c)
   if cache.__image == id then return false end
   cache.__image = id
   c:SetImage(Enum.ImageSource.StaticReference, id)
   return true
 end
+M.setImageById = setImage
 
 -- ★★ 可见性：官方契约里 `visible` 是**只读**字段 —— 读得到，**写会报**
 --    「cannot set visible, no such field」。改可见性必须调方法 SetVisible()。
@@ -2310,7 +2326,7 @@ local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex, artId)
   if len < 1e-6 then setVisible(ui, c, false); return end
   place(ui, c, cx, cy, (x1 + x2) / 2, (y1 + y2) / 2, len, w, rotDeg(dx, dy))
   setColor(ui, c, hex)
-  setImage(ui, c, artId or 1)
+  setImage(ui, c, artId)        -- nil = 不动素材（用模板自带那张）
 end
 
 -- 把一个控件当"一颗球"用
@@ -2318,7 +2334,7 @@ local function placeBead(ui, c, cx, cy, x, y, r, hex, artId)
   local d = 2 * r
   place(ui, c, cx, cy, x, y, d, d, 0)
   setColor(ui, c, hex)
-  setImage(ui, c, artId or 1)
+  setImage(ui, c, artId)        -- nil = 不动素材
 end
 
 -- 柔边（发光）：图片控件没有描边，靠 enableSoftEdge 做"糊一圈"的效果
@@ -2375,11 +2391,9 @@ function M.create(opts)
     stats = { writes = 0, ballWrites = 0, hudWrites = 0 },
   }
 
-  local art = opts.art or {}
-  if not next(art) then
-    for i = 1, #CFG.BASES do art[CFG.BASES[i]] = i end
-  end
-  ui.art = art
+  -- ★ 素材 id：**默认不打补丁**（见文件顶部 artIdOf 的注释 —— 写死 1..5 会让真机全画成"?"）
+  --   opts.art 给了才用；键是碱基（A/U/G/C/T），值是编辑器里那张图的素材 id。
+  ui.art = opts.art or {}
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -2406,6 +2420,16 @@ function M.create(opts)
 
   local n = opts.ballCount or 96
   local sn = opts.shotCount or 8
+
+  -- ⓪ "底"：一整块深色背板（用户反馈"没有底"）—— 只花 1 个控件，先建所以画在最底下。
+  --    半透明（留一点关卡场景透出来），有它整局才像"一个界面"而不是浮在半空。
+  --    backdrop = 0 可关掉（编辑器里自己摆了底图就用 0）。
+  if opts.backdrop ~= 0 then
+    local bg = build(ballPrefab, '背板控件', 1)
+    setColor(ui, bg, C.backdrop or '#0b1119d9')
+    softEdge(bg, false, 0)
+    ui.backdrop = bg
+  end
 
   -- ① 轨道（最底下）：一段段"棒"拼成两条轨路面
   if ui.trackOn ~= 0 then
@@ -2505,8 +2529,13 @@ end
 -- 轨道用"一段段棒"拼：本体 drawTrackLayer 是 canvas 描线，图片控件只能这样近似。
 -- 只在换关时写一次（静态），每帧不碰 —— 所以哪怕 128 个控件也不吃帧预算。
 local function placeTrack(ui, sc)
-  if ui.trackOn == 0 or #ui.track == 0 then return end
   local cx, cy = sc.view.cx, sc.view.cy
+  -- ⓪ 背板：铺满画布的一大块（每次尺寸变了才写）
+  if ui.backdrop then
+    place(ui, ui.backdrop, cx, cy, cx, cy, sc.view.w, sc.view.h, 0)
+    setVisible(ui, ui.backdrop, true)
+  end
+  if ui.trackOn == 0 or #ui.track == 0 then return end
   local mt = sc.metrics
   local key = tostring(sc.level and sc.level.id) .. '#' .. tostring(math.floor(sc.path.length)) ..
     '#' .. tostring(sc.rails and sc.rails.spawn and sc.rails.spawn.offset or 0)
@@ -2635,7 +2664,7 @@ function M.sync(ui, sc, st)
       -- 配错 = 灰球；已配对但还没定型，用原色（吸附飞行途中）
       local hex = b.wrongMark and CFG.WRONG_COLOR or baseColor(b.base)
       setColor(ui, c, hex)
-      setImage(ui, c, ui.art[b.base] or 1)
+      setImage(ui, c, artIdOf(ui, b.base))
 
       -- 光晕：读出/配错才亮（本体 drawBead 的 glow / pairGlow）
       if ui.halo[i] then
@@ -2671,7 +2700,7 @@ function M.sync(ui, sc, st)
     local e = elim[i]
     if e then
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
-        e.wrong and CFG.WRONG_COLOR or baseColor(e.base), ui.art[e.base] or 1)
+        e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
       local pid = e.partner and e.partner.id
       if pid ~= nil then
         liveElim[pid] = true
@@ -2753,7 +2782,7 @@ function M.sync(ui, sc, st)
     local c = ui.shots[i]
     local p = shots[i]
     if p then
-      placeBead(ui, c, cx, cy, p.x, p.y, p.r, baseColor(p.base), ui.art[p.base] or 1)
+      placeBead(ui, c, cx, cy, p.x, p.y, p.r, baseColor(p.base), artIdOf(ui, p.base))
     else
       setVisible(ui, c, false)
     end
@@ -2764,7 +2793,7 @@ function M.sync(ui, sc, st)
   for i = 1, #ui.merges do
     local m = merges[i]
     if m then
-      placeBead(ui, ui.merges[i], cx, cy, m.x, m.y, m.r, baseColor(m.base), ui.art[m.base] or 1)
+      placeBead(ui, ui.merges[i], cx, cy, m.x, m.y, m.r, baseColor(m.base), artIdOf(ui, m.base))
     else
       setVisible(ui, ui.merges[i], false)
     end
@@ -2796,9 +2825,9 @@ function M.sync(ui, sc, st)
     local bR = (sc.mode == 'insert') and mt.R or mt.r
     local b1, b2 = rb.loaded and rb.loaded[1], rb.loaded and rb.loaded[2]
     placeBead(ui, ui.loaded[1], cx, cy,
-      rb.x + ax * R * 0.8, rb.y + ay * R * 0.8, bR, baseColor(b1), ui.art[b1] or 1)
+      rb.x + ax * R * 0.8, rb.y + ay * R * 0.8, bR, baseColor(b1), artIdOf(ui, b1))
     placeBead(ui, ui.loaded[2], cx, cy,
-      rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), ui.art[b2] or 1)
+      rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), artIdOf(ui, b2))
   end
 
   -- ---- 开火后坐（stats.fired 涨了就弹一下）----
@@ -2833,6 +2862,9 @@ function M.sync(ui, sc, st)
   end
   text('runs', '连读 ' .. (#runs > 0 and table.concat(runs, ' ') or '—'))
   text('mode', st.mode == 'insert' and '模式：加球' or '模式：配对')
+  -- 判定诊断行（st.lastHit / st.mate 由 game.lua 填）：屏幕上直接看得到"这次算配对还是错配"
+  if ui.hud.hit then text('hit', st.lastHit or '') end
+  if ui.hud.mate then text('mate', st.mate or '') end
   if ui.hud.hint then
     text('hint', st.hintLines and table.concat(st.hintLines, '\n') or '')
   end
@@ -3086,6 +3118,11 @@ local function buildHudSpecs(w, h)
     { key = 'lives', x = halfW - 120 - pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'right' },
     { key = 'runs', x = -halfW + 220 + pad, y = halfH - 84 - pad, w = 440, h = 40, size = 26, align = 'left' },
     { key = 'mode', x = -halfW + 120 + pad, y = -halfH + 32 + pad, w = 240, h = 44, size = 26, align = 'left' },
+    -- ★★ 两条"教玩家怎么打"的诊断行（都在左上、不挡棋盘）：
+    --   mate：手里这颗该打谁（A 要打 U/T）—— 这才是 RNA 的规则，不是"同色消除"
+    --   hit ：最近一次命中的判定（配对 ✅ / 错配 ❌），省得去翻日志
+    { key = 'mate', x = -halfW + 120 + pad, y = halfH - 178 - pad, w = 640, h = 36, size = 22, align = 'left' },
+    { key = 'hit', x = -halfW + 120 + pad, y = halfH - 136 - pad, w = 640, h = 36, size = 22, align = 'left' },
     { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center', panel = 'light' },
     -- 结果框在正中央：**平时没有文字**，所以不给底板（给了就是一块盖住核糖体的黑板）
     { key = 'result', x = 0, y = 0, w = math.min(w - 40, 640), h = 120, size = 40, align = 'center', panel = false },
@@ -3337,9 +3374,34 @@ function G.boot()
   G.cursorArea:SetSizeDelta(w, h)
   say('玩区 = %s / 光标区 = %s', tostring(G.area), tostring(G.cursorArea))
 
+  -- ★ 球面素材 id：默认**不打补丁**（球就用模板自带那张图）。
+  --   真机踩过：写死 SetImage(1..5) 时每颗球都画成"**?**"—— 编辑器里的素材 id 不是 1..5。
+  --   要指定就填 art=A:1073741860,U:1073741861,G:...,C:...,T:...（id 在编辑器点开素材能看到）
+  local art = {}
+  do
+    local spec = param('art', '')
+    if type(spec) == 'string' and spec ~= '' then
+      for pair in string.gmatch(spec, '[^,;%s]+') do
+        local k, v = string.match(pair, '([AUGC]):(%d+)')
+        if k and v then art[k] = tonumber(v) end
+      end
+    end
+    if next(art) then
+      local parts = {}
+      for i = 1, #CFG.BASES do
+        local b = CFG.BASES[i]
+        if art[b] then parts[#parts + 1] = b .. '=' .. tostring(art[b]) end
+      end
+      say('球面素材 id：%s', table.concat(parts, ' '))
+    else
+      say('球面素材：不指定 → 用模板自带那张图（不再强制 SetImage，免得真机画成"?"）')
+    end
+  end
+
   G.ui = UI.create({
     parent = G.area,
     canvas = G.canvas,
+    art = art,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,
@@ -3375,6 +3437,21 @@ function G.boot()
 
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
+
+  -- ★★ 碱基抽样（排"打中全变灰 / 球发白"这类问题用）：
+  --   若这里打出 nil，说明真机上**碱基没生成出来** → 球会是白的、且每次命中都判"错配"。
+  --   若碱基正常而命中仍判错配，那就是"打中的是旁边那颗"（碰撞/瞄准）问题。
+  do
+    local balls = G.sc and G.sc.chain and G.sc.chain.balls or {}
+    local sample = {}
+    for i = 1, math.min(#balls, 8) do sample[#sample + 1] = tostring(balls[i].base) end
+    say('球碱基抽样（共 %s 颗，前 8）：%s', tostring(#balls), table.concat(sample, ' '))
+    local rb = G.sc and G.sc.rb or nil
+    if rb and rb.loaded then
+      say('核糖体待发碱基：%s / %s', tostring(rb.loaded[1]), tostring(rb.loaded[2]))
+    end
+    say('本关允许的碱基：%s', table.concat(G.sc and G.sc.bases or {}, ' '))
+  end
   return G
 end
 
@@ -3496,6 +3573,20 @@ end
 
 -- 给 ui.sync 的那一小包"表现层才关心的东西"
 -- dt：动效要按时间推进；events：board 攒的事件（清段/爆炸/命中），表现层拿去播一次性动效
+-- ★★ 教玩家怎么打：手里这颗该打谁。
+--   这是本作最容易误解的一点 —— 它是 **RNA 互补配对**（A↔U/T、G↔C），
+--   **不是**祖玛那种"同色三消"。真机上用户"打中了却变灰"，九成就是打了同字母的球。
+function G.mateText()
+  if not G.sc or G.sc.mode ~= 'match' then return '' end
+  local rb = G.sc.rb
+  local b = rb and rb.loaded and rb.loaded[1]
+  if not b then return '' end
+  local c = CFG.COMPLEMENT[b] or {}
+  if #c == 0 then return '手里 ' .. tostring(b) end
+  -- ⚠ 文本框宽度有限（640），太长会被裁掉 —— 规则说明放在关卡提示里，这里只给结论
+  return '手里 ' .. tostring(b) .. ' → 打 ' .. table.concat(c, '/') .. ' 的球'
+end
+
 function G.syncState(dt)
   local lines = {}
   if G.level and G.level.hint then
@@ -3508,11 +3599,34 @@ function G.syncState(dt)
   elseif G.screen == 'lost' then
     lines = { '命数用尽  按 R 重来' }
   end
+  -- ★★ 判定诊断：每次命中都打一行「弹丸碱基 vs 目标球碱基 → 配对/错配」。
+  --   真机第一次试玩"打中全变灰、也不进三消道"就只能靠这种行定位
+  --   （要么碱基是 nil，要么判定反了，要么命中的是旁边那颗）。
+  local events = G.sc and BOARD.drainEvents(G.sc) or nil
+  if events then
+    for i = 1, #events do
+      local e = events[i]
+      -- 事件的字段（见 board.resolveHit）：base = **弹丸**的碱基，target = **被打中那颗球**的碱基
+      if e.type == 'pair' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 打中球 ' .. tostring(e.target) .. ' → 配对 ✅'
+        say('%s', G.lastHit)
+      elseif e.type == 'mismatch' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 打中球 ' .. tostring(e.target)
+          .. ' → 错配 ❌（球变灰、绑定球也是灰的）'
+        say('%s', G.lastHit)
+      elseif e.type == 'insert' then
+        G.lastHit = '上次命中：弹丸 ' .. tostring(e.base) .. ' 并入球 ' .. tostring(e.target) .. '（加球模式）'
+        say('%s', G.lastHit)
+      end
+    end
+  end
   return {
     dt = dt,
-    events = G.sc and BOARD.drainEvents(G.sc) or nil,   -- ★ 只有一个消费者：这里取走，别处再取就没了
+    events = events,   -- ★ 只有一个消费者：这里取走，别处再取就没了
     mode = G.sc and G.sc.mode or 'match',
     hintLines = lines,
+    lastHit = G.lastHit,
+    mate = G.mateText and G.mateText() or nil,
   }
 end
 
