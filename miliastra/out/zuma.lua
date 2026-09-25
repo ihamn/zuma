@@ -3343,6 +3343,27 @@ function G.boot()
   if not root then error('找不到挂载控件：脚本要挂在**客户端控件**上（不能挂主屏）') end
   G.root = root
   root:SetActive(true)
+  -- ★★ 光标常驻 + CursorEvent 的前置条件（官方 API 文档 §24 ClientUIContainerControl）：
+  --     showCursor  boolean 读写 —— "是否显示常驻光标；**CursorEvent 相关方法都需设置该参数为真后
+  --     才可正常使用**"。
+  --   也就是说：不设它，玩家得**按住 Alt** 才能看见光标（用户实测就是这个），
+  --   而且点击/光标事件也可能不生效。设上 = 光标常驻 + 事件正常。
+  --   （编辑器里等价开关：容器节点控件 → 功能设置 → 【显示常驻光标】）
+  do
+    local targets = { root }
+    if G.area and G.area ~= root then targets[#targets + 1] = G.area end
+    local done = {}
+    for i = 1, #targets do
+      local c = targets[i]
+      local ok, err = pcall(function() c.showCursor = true end)
+      if ok then
+        done[#done + 1] = tostring(c)
+      else
+        say('⚠ 设 showCursor 失败（%s）：%s', tostring(c), tostring(err))
+      end
+    end
+    say('★ 已开"显示常驻光标" showCursor=true（%s）—— 不用再按住 Alt', table.concat(done, ' '))
+  end
   -- ★ 挂载点（客户端控件容器）自己也要**有尺寸**：它在编辑器里如果是 0×0，
   --   我们挂进去的所有控件都会被裁掉 —— 表现就是"脚本全跑通了、屏幕上什么都没有"。
   --   ⚠ 只设尺寸、**不动位置**：位置由编辑器/布局决定，乱设会让整盘偏移。

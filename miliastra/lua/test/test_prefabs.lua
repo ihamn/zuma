@@ -190,6 +190,22 @@ do
   H.eq(GAME.ui.art['G'], 1073741999, 'artImage=1073741999 直接生效')
 end
 
+-- ⑮ ★★ 光标常驻：官方 API §24 说 ClientUIContainerControl.showCursor = "是否显示常驻光标；
+--    **CursorEvent 相关方法都需设置该参数为真后才可正常使用**"。
+--    用户真机现象：不设就得**按住 Alt** 才看得见光标。所以脚本必须在启动时打开它。
+do
+  local h15 = MOCK.newHost({ w = 900, h = 900 })
+  h15.prefabs[1] = 'image'
+  h15.prefabs[2] = 'textbox'
+  h15.prefabs[3] = 'cursorarea'
+  h15.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0 }
+  MOCK.install(h15)
+  h15.scriptObj.object = h15.root
+  h15.mount(GAME)
+  H.eq(GAME.error, nil, '能跑起来：' .. tostring(GAME.error))
+  H.eq(h15.root.showCursor, true, '★ 挂载点（容器节点）的 showCursor 被脚本打开了 → 光标常驻')
+end
+
 -- ⑬ ★★ 铁律：整局建完之后，**每一个图片控件都必须有素材**（imageId 非 nil）。
 --    真机上"没设素材的图片控件"就是画成"?"；用户报过两次（球那批、轨道那批），
 --    根因都是"某个绘制分支忘了设"。这条断言把整个类别的 bug 一次钉死。
