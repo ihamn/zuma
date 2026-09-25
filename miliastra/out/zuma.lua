@@ -3042,14 +3042,17 @@ local LOCK_RIDDLE = {
 local function syncLock(ui, sc, st)
   local e = ui.egg
   if not e then return end
-  local inLock = (st.screen == 'lock')
+  -- ★★ 不在门禁屏就**什么都别碰** ✗ —— 本函数在 syncEgg **之后**跑，
+  --   如果在这里 setVisible(..., false) 收尾，就会把**交易所屏的暗幕**一起藏掉
+  --   ⇒ 底下的关卡场景（第一关）会从面板底下冒出来（奇匠："这版门锁打开后会让第一关奇怪的出现"）。
+  if st.screen ~= 'lock' then return end
+  local inLock = true
   local cx, cy = sc.view.cx, sc.view.cy
   local W, H, s = sc.view.w, sc.view.h, sc.metrics.scale
 
-  setVisible(ui, e.scrim, inLock)
-  setVisible(ui, e.title, inLock)
-  for i = 1, #e.lines do setVisible(ui, e.lines[i], inLock) end
-  if not inLock then return end
+  setVisible(ui, e.scrim, true)
+  setVisible(ui, e.title, true)
+  for i = 1, #e.lines do setVisible(ui, e.lines[i], true) end
 
   -- 局内 HUD 全藏（和交易所屏同理）
   for i = 1, #ui.hudOrder do setVisible(ui, ui.hud[ui.hudOrder[i]], false) end
