@@ -1896,7 +1896,7 @@ M.LEVELS = {
     short = "配对",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = 0.75,
     innerRatio = nil,
     prefill = 12,
@@ -1918,7 +1918,7 @@ M.LEVELS = {
     short = "三的倍数",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = 0.75,
     innerRatio = nil,
     prefill = nil,
@@ -1940,7 +1940,7 @@ M.LEVELS = {
     short = "配错的代价",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = 0.75,
     innerRatio = nil,
     prefill = nil,
@@ -1962,7 +1962,7 @@ M.LEVELS = {
     short = "加球",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = 0.75,
     innerRatio = nil,
     prefill = 12,
@@ -1984,7 +1984,7 @@ M.LEVELS = {
     short = "死球",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = 0.75,
     innerRatio = nil,
     prefill = nil,
@@ -2006,7 +2006,7 @@ M.LEVELS = {
     short = "洞穴",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = nil,
     innerRatio = nil,
     prefill = nil,
@@ -2028,7 +2028,7 @@ M.LEVELS = {
     short = "综合",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = nil,
     innerRatio = nil,
     prefill = 16,
@@ -2045,12 +2045,12 @@ M.LEVELS = {
     hint = { "把前面学的都用上：反色配对、凑 3 的倍数、别去配 1-间隔的那颗。" },
   },
   {
-    id = "spiral-inner",
-    name = "螺旋 · 出球道在内",
-    short = "螺旋·内",
+    id = "spiral-outer",
+    name = "螺旋 · 出球道在外",
+    short = "螺旋·外",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-inner",
+    railOrder = "spawn-outer",
     turns = nil,
     innerRatio = nil,
     prefill = 14,
@@ -3416,6 +3416,18 @@ local function detectPrefabs(root)
           local src, iid = c.imageSource, c.imageId
           probe[#probe + 1] = '索引 ' .. tostring(i) .. '：建出 ' .. tostring(t) ..
             '（自带图 source=' .. tostring(src) .. ' id=' .. tostring(iid) .. '）'
+          -- ★★ 图片类型（基础 / 拉伸）：**真机上只读**（我们自己的契约 §14：赋值报
+          --    "cannot set imageType"）→ 脚本改不了，只能读出来提醒。
+          --    若模板是"拉伸"且素材是三宫格/九宫格，我们放大控件时**四角不变、中间被拉**，
+          --    球与光晕各自形变 → 看上去就是"球变大了 / 描边变形"（用户反复反馈的那个）。
+          local it = c.imageType
+          if it ~= nil then
+            local okE, basicVal = pcall(function() return Enum.ImageType.Basic end)
+            local isBasic = okE and (it == basicVal)
+            probe[#probe + 1] = '图片类型 = ' .. tostring(it) ..
+              (isBasic and '（基础 ✓ 正确）'
+                or '（★ 拉伸 —— 请到图片模板里把「图片类型」改成基础，素材也别用三宫格/九宫格）')
+          end
         end
         for k, word in pairs(want) do
           if found[k] == nil and type(t) == 'string' and t:find(word, 1, true) then found[k] = i end
