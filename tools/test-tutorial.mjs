@@ -36,8 +36,8 @@ check('全部关卡表 = 新手关 + 正式关', ALL_LEVELS.length === TUTORIALS
   ALL_LEVELS.length + ' = ' + TUTORIALS.length + ' + ' + LEVELS.length);
 check('★ 正式关在 ALL_LEVELS 里排最后（测试/探针依赖 LEVELS[0] 不变）',
   ALL_LEVELS[ALL_LEVELS.length - 1].id === 'endless');
-check('★ 正式关 3 个；LEVELS[0] = spiral-inner（2026-09-25 删掉 spiral-outer，奇匠看图选了在内）',
-  LEVELS.length === 3 && LEVELS[0].id === 'spiral-inner' && LEVELS[0].prefill === 14);
+check('★ 正式关 3 个；LEVELS[0] = spiral-outer（2026-09-25 删掉 spiral-inner；奇匠定的是出球道在外）',
+  LEVELS.length === 3 && LEVELS[0].id === 'spiral-outer' && LEVELS[0].prefill === 14);
 check('每关都有 id / name / short / hint / 球数预算',
   TUTORIALS.every(function (l) { return l.id && l.name && l.short && l.hint && l.ballBudget > 0; }));
 check('每关都是"清空过关"（scoreTarget = Infinity），不会被分数提前结束',

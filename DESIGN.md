@@ -3933,10 +3933,10 @@ t1~t4   1292（静止关，见 §63）      spiral-outer  2354
 t8      1776                        cross-return  4357（另一种骨架，未改，见 62.4）
 `
 
-> ★ **2026-09-25 关卡表变更（奇匠决定；中间奇匠先说反过一次，这是更正后的最终状态）**：
-> 删掉正式关 **`spiral-inner`**（"螺旋 · 出球道在内"），保留 `spiral-outer`（出球道在外）。
-> 同时把新手关里**唯一用"内"的那一关**（`t7-mix`）也换成 `'spawn-outer'` ——
-> 于是**整个游戏不再出现 `railOrder: 'spawn-inner'`**。
+> ★ **2026-09-25 关卡表变更【最终定稿】**：**全部 10 关 `railOrder: 'spawn-outer'`（出球道在外）**；
+> 正式关保留 `spiral-outer`、删掉 `spiral-inner`（`spawn-inner` 计数 = 0）。
+> （过程曲折：中间为"内/外"来回五轮 —— 我猜过、产物没更新过、只改了一半过、标签误导过，
+> 详见 HANDOFF §22~§25。教训写在 §25：二选一别把结论写进选项标签。）
 > 影响面（均已同步）：`src/levels.js`、`tools/test-tutorial.mjs` 的 LEVELS 断言、`tools/smoke.mjs` 的菜单条目数与核心关下标、
 > `tools/test-{geometry,insert}.mjs` 里按数字下标取"交叉关"的三处（已改成按 id 查）、
 > 导出物 `miliastra/lua/src/levels_data.lua`、手册与本文档的关卡编号。

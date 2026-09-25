@@ -1766,8 +1766,8 @@
    ]
   },
   {
-   "id": "spiral-inner",
-   "name": "螺旋 · 出球道在内",
+   "id": "spiral-outer",
+   "name": "螺旋 · 出球道在外",
    "trackLength": 2353.77,
    "slotPitch": 39.5,
    "slotCount": 60,
