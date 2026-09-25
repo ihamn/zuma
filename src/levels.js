@@ -41,7 +41,7 @@ export const LEVELS = [
     name: '交叉演示 · 遮挡与桥',
     short: '交叉桥',
     makeSpine: crossReturnSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     // 回程段放在上层：跨层相交 = 合法桥；同层自交 = 报错
     layers: function (path, spine) {
       const cut = path.sAtU(spine.junctionU != null ? spine.junctionU : 0.64);
@@ -61,7 +61,7 @@ export const LEVELS = [
     name: '无尽 · 无限出球',
     short: '无尽',
     makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     prefill: 18,
     ballBudget: 0,

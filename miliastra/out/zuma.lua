@@ -2072,7 +2072,7 @@ M.LEVELS = {
     short = "交叉桥",
     spineKind = 1,
     layersFromJunction = true,
-    railOrder = "spawn-outer",
+    railOrder = "spawn-inner",
     turns = nil,
     innerRatio = nil,
     prefill = 16,
@@ -2094,7 +2094,7 @@ M.LEVELS = {
     short = "无尽",
     spineKind = 0,
     layersFromJunction = false,
-    railOrder = "spawn-outer",
+    railOrder = "spawn-inner",
     turns = nil,
     innerRatio = nil,
     prefill = 18,
@@ -3824,8 +3824,12 @@ function G.refreshDiag()
     local pool = G.ui and #G.ui.balls or 0
     -- 控件总数 = ui 建的 + 脚本自己建的 3 个（诊断框 / 玩区 / 光标区）
     local ctrl = G.ui and (UI.count(G.ui) + 3) or 0
-    s = string.format('帧%d 关%s 球%d/%d 控件%d 状态%s', G.frames,
-      tostring(G.level and G.level.id or '?'), balls, pool, ctrl, G.screen)
+    -- ★ 诊断行里带上**轨道朝向**（出球道在内/在外）：这类"内外"的争论看一眼这行就有结论，
+    --   不用再靠猜或互相描述（2026-09-25 为"内外"来回了好几轮，根因就是当时没这个信息）。
+    local rail = G.level and G.level.railOrder
+    local railTxt = (rail == 'spawn-outer') and '外' or (rail == 'spawn-inner') and '内' or '?'
+    s = string.format('帧%d 关%s(出球道在%s) 球%d/%d 控件%d 状态%s', G.frames,
+      tostring(G.level and G.level.id or '?'), railTxt, balls, pool, ctrl, G.screen)
   end
   if #s > 240 then s = s:sub(1, 240) end
   if hc.text ~= s then hc.text = s end

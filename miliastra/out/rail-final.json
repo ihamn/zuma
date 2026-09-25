@@ -36,7 +36,7 @@
    "h": 30,
    "rot": 0,
    "pivot": 0.5,
-   "text": "帧120 关spiral-inner 球17/96 控件835 状态playing",
+   "text": "帧120 关spiral-inner(出球道在内) 球17/96 控件835 状态playing",
    "fontSize": 18,
    "align": "Left",
    "valign": "Middle",
@@ -67,68 +67,6 @@
    "h": 900,
    "rot": 0,
    "pivot": 0.5
-  },
-  {
-   "kind": "textbox",
-   "name": "Text",
-   "id": 941,
-   "active": true,
-   "visible": true,
-   "x": 464.85,
-   "y": 435.15,
-   "scale": 1,
-   "w": 21.5,
-   "h": 21.5,
-   "rot": 0,
-   "pivot": 0.5,
-   "text": "U",
-   "fontSize": 13,
-   "align": "Middle",
-   "valign": "Middle",
-   "fontColor": [
-    19,
-    42,
-    8,
-    255
-   ],
-   "bgColor": [
-    0,
-    0,
-    0,
-    0
-   ],
-   "outline": false
-  },
-  {
-   "kind": "textbox",
-   "name": "Text",
-   "id": 940,
-   "active": true,
-   "visible": true,
-   "x": 433.03,
-   "y": 466.97,
-   "scale": 1,
-   "w": 26.87,
-   "h": 26.87,
-   "rot": 0,
-   "pivot": 0.5,
-   "text": "A",
-   "fontSize": 16,
-   "align": "Middle",
-   "valign": "Middle",
-   "fontColor": [
-    28,
-    10,
-    36,
-    255
-   ],
-   "bgColor": [
-    0,
-    0,
-    0,
-    0
-   ],
-   "outline": false
   },
   {
    "kind": "cursor",
@@ -21085,6 +21023,68 @@
     0
    ],
    "outline": true
+  },
+  {
+   "kind": "textbox",
+   "name": "Text",
+   "id": 940,
+   "active": true,
+   "visible": true,
+   "x": 433.03,
+   "y": 466.97,
+   "scale": 1,
+   "w": 26.87,
+   "h": 26.87,
+   "rot": 0,
+   "pivot": 0.5,
+   "text": "A",
+   "fontSize": 16,
+   "align": "Middle",
+   "valign": "Middle",
+   "fontColor": [
+    28,
+    10,
+    36,
+    255
+   ],
+   "bgColor": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "outline": false
+  },
+  {
+   "kind": "textbox",
+   "name": "Text",
+   "id": 941,
+   "active": true,
+   "visible": true,
+   "x": 464.85,
+   "y": 435.15,
+   "scale": 1,
+   "w": 21.5,
+   "h": 21.5,
+   "rot": 0,
+   "pivot": 0.5,
+   "text": "U",
+   "fontSize": 13,
+   "align": "Middle",
+   "valign": "Middle",
+   "fontColor": [
+    19,
+    42,
+    8,
+    255
+   ],
+   "bgColor": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "outline": false
   }
  ]
 }
