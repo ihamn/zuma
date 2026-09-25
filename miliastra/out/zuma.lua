@@ -3048,6 +3048,9 @@ end
 -- ==================== 启动 ====================
 
 function G.OnInit()
+  -- ★★ 第一行就要说话：**日志里看不到这行 = 脚本根本没跑起来**（映射没挂上 / 容器不可见）。
+  --   这是排错的第一分叉点，所以放在所有可能失败的动作之前，而且用不依赖控件的 print。
+  say('★ zuma 脚本已启动（日志里能看到这行 = 脚本挂上了）')
   -- ★★ 真机限制（来源：客户端 Lua 运行时真机探针 + 官方《客户端控件 API 文档》）：
   --   1. game.InstantiateClientUIControl 在 **OnInit 阶段返回 nil**，只有 OnStart 及之后成功。
   --      —— 所以这里**一个控件都不建**，全部挪到 OnStart（见 G.tryBoot）。
@@ -3084,6 +3087,13 @@ function G.tryBoot()
     G.error = tostring(err)
     G.screen = 'error'
     say('tryBoot 失败：%s', tostring(err))
+    -- ★ 失败在"建控件之前"（多半是挂载点/模板/容器的问题）→ 把**真实控件树**打进日志。
+    --   官方 API：game.PrintClientUITree() "将当前客户端控件树按父子层级写入日志"。
+    --   只在 ui 还没建起来时打（那时树很小）；建了一半就别打了，几百个控件会刷屏。
+    if not G.ui and game.PrintClientUITree then
+      pcall(game.PrintClientUITree)
+      say('已把客户端控件树打进日志（用来确认容器/挂载点到底存不存在）')
+    end
     if printerr then pcall(printerr, '[zuma] 建控件失败：' .. tostring(err)) end
   end
   G.refreshDiag()
