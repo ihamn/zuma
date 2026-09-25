@@ -187,8 +187,17 @@ http://10.176.136.109:8080/miliastra/out/zuma.lua &nbsp;（下载文件）</p>
   <li>右键 → <span class="k">新建脚本映射</span>。</li>
   <li>右键它 → <span class="k">编辑脚本映射路径</span> → <span class="k">选择与脚本映射关联的本地文件</span> → 选桌面上的 <code>1_先上这个_hello.lua</code>。</li>
   <li>回到第 2.3 步的<b>脚本页签</b>，<span class="k">添加脚本</span>，选刚建的这个映射。</li>
-  <li class="muted">如果这一步弹"不允许访问 … external_lua_file" → <b>不是你的错</b>，直接看下面的<b>专节</b>。</li>
+  <li class="muted">如果这一步弹"不允许访问 … external_lua_file" → <b>不是你的错</b>，看下面的<b>方式 3</b>。</li>
 </ol>
+
+<h3>方式 3（云电脑上实测有效）：让 DSH 直接把文件放进去</h3>
+<p>实测：那个目录<b>本身是可写的</b>（报"不允许访问"的是对话框，不是权限）。所以回 DSH 说一句
+<b>"把脚本放进游戏目录"</b>，它会跑
+<code>node miliastra/tools/pc-install-scripts.mjs</code>，
+把 <code>hello.lua</code> + <code>zuma.lua</code> 直接拷进：</p>
+<p><code>C:\Users\&lt;用户名&gt;\AppData\LocalLow\miHoYo\原神\BeyondLocal\&lt;UID&gt;\Beyond_Local_Save_Level\&lt;关卡ID&gt;\external_lua_file</code></p>
+<p class="muted">放好之后再进"选择与脚本映射关联的本地文件"，把这个路径<b>粘到对话框地址栏</b>，
+应该就能看到 <code>hello.lua</code> 了。⚠ <b>云电脑重启会清空这个目录</b>，回来让 DSH 再放一次即可。</p>
 <div class="box warn">
   <div class="big">⚠ 这一步是"必须建立映射"</div>
   官方原话：<b>"只有在千星沙箱里建立了映射的 lua 文件才会被打包上传"</b>。
