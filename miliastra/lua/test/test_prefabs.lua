@@ -105,4 +105,20 @@ H.eq(img.SetImage == nil, false, '图片控件有 SetImage')
 H.eq(cur.SetImage, nil, '★ 光标检测区域没有 SetImage（真机也没有）')
 H.eq(cur.AddCursorEventListener == nil, false, '光标检测区域有 AddCursorEventListener')
 
+-- ⑧ ★★ 真机的模板索引是**大数字**（2^30 起）：用户实测点开模板看到 1073741846。
+--    第一版只扫 1..32，于是"明明存了模板"却全报 nil —— 这条就是那个 bug 的回归测试。
+local h8 = MOCK.newHost({ w = 900, h = 900 })
+h8.prefabs[1073741846] = 'image'
+h8.prefabs[1073741850] = 'textbox'
+h8.prefabs[1073741860] = 'cursorarea'
+h8.params = { levelIndex = 1, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0, diag = 1 }
+MOCK.install(h8)
+h8.scriptObj.object = h8.root
+h8.mount(GAME)
+H.eq(GAME.error, nil, '大数字索引也能跑起来：' .. tostring(GAME.error))
+H.eq(GAME.prefabs.ball, 1073741846, '★ 认出球模板 = 1073741846（真机就是这个量级）')
+H.eq(GAME.prefabs.hud, 1073741850, '认出文本框模板 = 1073741850')
+H.eq(GAME.prefabs.cursor, 1073741860, '认出光标检测区域模板 = 1073741860')
+H.truthy(GAME.ui and #GAME.ui.balls > 0, '球池照常建出来：' .. tostring(GAME.ui and #GAME.ui.balls))
+
 H.finish()

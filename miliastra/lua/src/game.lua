@@ -156,28 +156,49 @@ local function detectPrefabs(root)
     playPrefab = 'Container',
   }
   local found = {}
-  local probe = {}        -- 诊断用：前几个索引到底"建出来了"还是"报什么错"
+  local probe = {}        -- 诊断用：建出来的/报错的都记一笔
   if not (typeof and game.InstantiateClientUIControl and game.DestroyClientUIControl) then
     return found, probe
   end
-  for i = 1, 32 do
-    local ok, c = pcall(game.InstantiateClientUIControl, i, root)
-    if i <= 8 then
-      local desc
-      if not ok then desc = '报错 ' .. tostring(c)
-      elseif c == nil then desc = 'nil（没有这个模板）'
-      else desc = '建出 ' .. tostring(typeof(c)) end
-      probe[#probe + 1] = '索引 ' .. tostring(i) .. '：' .. desc
-    end
-    if ok and c then
-      local t = typeof(c)
-      for k, word in pairs(want) do
-        if found[k] == nil and type(t) == 'string' and t:find(word, 1, true) then found[k] = i end
+
+  -- ★★ 索引空间（这是第一版踩的坑）：真机上"客户端控件模板索引"是**大数字**，
+  --   不是 1/2/3/4。实测数据点：用户点开模板看到 1073741846，关卡目录是 1073741825
+  --   —— 都从 2^30 起（同一个 ID 空间）。只扫 1..32 的话，"明明存了模板"也会全报 nil。
+  local BASE = 1073741824          -- 2^30
+  local RANGES = {
+    { 1, 32 },                     -- 有些环境/子控件确实用小索引
+    { BASE + 1, BASE + 192 },      -- 客户端控件模板的真实空间（覆盖 1073741846 这种）
+  }
+
+  local built = 0
+  for r = 1, #RANGES do
+    local lo, hi = RANGES[r][1], RANGES[r][2]
+    local madeHere = 0
+    for i = lo, hi do
+      -- 小范围（1~32）要**扫完**，否则会漏掉容器模板（它常常排在最后）；
+      -- 大范围（2^30 起，192 个索引）只要三个必需的认出来就收工，省得白试两百次。
+      if r > 1 and found.ballPrefab and found.hudPrefab and found.cursorPrefab then break end
+      local ok, c = pcall(game.InstantiateClientUIControl, i, root)
+      if ok and c then
+        madeHere = madeHere + 1
+        built = built + 1
+        local t = typeof(c)
+        if #probe < 12 then
+          probe[#probe + 1] = '索引 ' .. tostring(i) .. '：建出 ' .. tostring(t)
+        end
+        for k, word in pairs(want) do
+          if found[k] == nil and type(t) == 'string' and t:find(word, 1, true) then found[k] = i end
+        end
+        pcall(game.DestroyClientUIControl, c)      -- 探针不留痕
+      elseif not ok and #probe < 12 then
+        probe[#probe + 1] = '索引 ' .. tostring(i) .. '：报错 ' .. tostring(c)
       end
-      pcall(game.DestroyClientUIControl, c)      -- 探针不留痕
+    end
+    if madeHere == 0 and #probe < 12 then
+      probe[#probe + 1] = '范围 ' .. tostring(lo) .. '~' .. tostring(hi) .. '：一个都建不出来'
     end
   end
-  return found, probe
+  return found, probe, built
 end
 
 -- 真正干活的初始化。任何一步失败都会被 OnInit 的 pcall 接住并显示在屏幕上。
@@ -187,8 +208,17 @@ function G.boot()
   G.autoNext = param('autoNext', 1) ~= 0
 
   local root = script.object
+  local roots = game.GetClientUIRoots and game.GetClientUIRoots() or nil
+  local rootCount = (roots and #roots) or 0
+  -- ★ 官方定义：GetClientUIRoots() = "实际显示的客户端控件容器画布中的默认容器节点"。
+  --   0 = 关卡运行时**没有显示中的画布**（容器没加进界面布局 / 初始可见没勾 / 玩家应用的布局不对）
+  --   —— 这种情况下就算模板建好了也什么都看不见，所以单独报一声。
+  say('客户端控件根控件数 = %s', tostring(rootCount))
+  if rootCount == 0 then
+    say('   ⚠ 运行时看不到任何 UI 根控件：请确认那个"客户端控件容器"是加在')
+    say('      【界面控件组管理 → 界面布局】里、勾了【初始可见】，且参数配置窗口里玩家应用的就是这个布局')
+  end
   if not root then
-    local roots = game.GetClientUIRoots()
     root = roots and roots[1] or nil
   end
   if not root then error('找不到挂载控件：脚本要挂在**客户端控件**上（不能挂主屏）') end
@@ -198,17 +228,18 @@ function G.boot()
 
   -- ★ 模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）
   local useAuto = param('autoPrefabs', 1) ~= 0
-  local auto, probe = {}, {}
+  local auto, probe, built = {}, {}, 0
   if useAuto then
-    auto, probe = detectPrefabs(root)
-    say('自动认模板：球=%s 文本=%s 光标=%s 容器=%s', tostring(auto.ballPrefab), tostring(auto.hudPrefab),
-      tostring(auto.cursorPrefab), tostring(auto.playPrefab))
+    auto, probe, built = detectPrefabs(root)
+    say('自动认模板：球=%s 文本=%s 光标=%s 容器=%s（探测共建出 %s 个控件）',
+      tostring(auto.ballPrefab), tostring(auto.hudPrefab),
+      tostring(auto.cursorPrefab), tostring(auto.playPrefab), tostring(built))
+    for i = 1, #probe do say('   %s', probe[i]) end
     if not (auto.ballPrefab or auto.hudPrefab or auto.cursorPrefab or auto.playPrefab) then
-      -- 一个模板都没有 = 动态创建无从谈起。把"该怎么建"和"探针看到了什么"一起打出来。
-      say('⚠ 索引 1~32 里没找到任何客户端控件模板 —— 这就是屏幕空白的原因')
-      say('   建法：界面控件组库 → 客户端控件模板 → 【添加客户端控件】→ 选类型 → **存为模板**')
-      say('   （注意是"存为模板"，不是"在画布里摆一个控件"；摆出来的实例没有模板索引）')
-      for i = 1, #probe do say('   探针 %s', probe[i]) end
+      say('⚠ 两个索引空间都没找到客户端控件模板 —— 这就是屏幕空白的原因')
+      say('   ① 模板要"存为模板"：界面控件组库 → 客户端控件模板 → 【添加客户端控件】→ 选类型 → 存为模板')
+      say('   ② 实在找不到就把编辑器里点开控件看到的那个大数字（形如 1073741xxx）填进脚本变量：')
+      say('      ballPrefab / hudPrefab / cursorPrefab（填了就优先用你填的）')
     end
   end
   G.prefabs = {
