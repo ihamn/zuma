@@ -2405,6 +2405,7 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   ui.trackSegments = opts.trackSegments or 64
   ui.trackKey = nil
+  ui.letterProbe = (opts.letterProbe == nil) and 1 or opts.letterProbe
 
   local ballPrefab = opts.ballPrefab or 1
   local hudPrefab = opts.hudPrefab or 2
@@ -2913,7 +2914,13 @@ function M.sync(ui, sc, st)
     local lx2, ly2 = rb.x - ax * R * 0.7, rb.y - ay * R * 0.7
     placeBead(ui, ui.loaded[1], cx, cy, lx1, ly1, bR, baseColor(b1), artIdOf(ui, b1))
     placeBead(ui, ui.loaded[2], cx, cy, lx2, ly2, bR * 0.8, baseColor(b2), artIdOf(ui, b2))
-    -- ★ 两颗待发球的字母（本体 lb(1) / lb(0) 都画）
+    -- ★★ 两颗待发球的字母（本体 lb(1) / lb(0) 都画）。
+    -- ★★★ 2026-09-25 **临时探针**（定位"③ 的字母设好了却不显示"）：
+    --   真机日志已证明 ③ 的文本框「文字=G 可见=true 字号=15 位置=(0,-21)」全都正常，
+    --   屏幕上却没有 —— 只剩两种可能，探针一次判定：
+    --     · 看到"红底方块 + 白字 G" → 控件会被绘制，是尺寸/颜色问题 → 据此收窄；
+    --     · 什么都看不到            → 这个控件不在绘制列表里 → 改用**链珠字母那套池子**画。
+    --   探针只动 ③（k=2），④ 全程不动；`letterProbe=0` 可关掉。
     for k = 1, 2 do
       local lc = ui.loadedLetter and ui.loadedLetter[k]
       if lc then
@@ -2921,17 +2928,22 @@ function M.sync(ui, sc, st)
         local rr = (k == 1) and bR or bR * 0.8
         local xx = (k == 1) and lx1 or lx2
         local yy = (k == 1) and ly1 or ly2
-        local d2 = 2 * rr
+        local probe = (ui.letterProbe ~= 0) and (k == 2)
+        local d2 = probe and (rr * 5.6) or (2 * rr)
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
-        lc.text = tostring(base or '')
-        -- ★ 字号公式与链珠字母、绑定球字母**完全一致**（半径 × V.letterScale = 1.15）——
-        --   这一条是 09-25 "④ 被我改糊"那次的教训，别再整体放大、更别加 enableOutline。
-        -- ★★ 但**加一个下限 15**：③ 预备球是本体里最小的球（半径 bR×0.8 ≈ 10.7 → 只有 12px），
-        --   本体用的是**粗体**、我们设不了粗体，12px 细字在真机（画布 1815×900 → scale=1.0）上
-        --   就是"看不见"。下限 15 = ④ 的自然字号，于是**只抬升比 15 还小的那颗（就是 ③）**，
-        --   链珠（21px）/ 绑定球（15px）/ ④（15px）**一个都不变**。
-        lc.fontSize = math.max(15, math.floor(rr * V.letterScale))
-        lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
+        if probe then
+          lc.text = 'G'
+          lc.fontSize = 24
+          lc.fontColor = hexColor('#ffffff')
+          lc.bgColor = hexColor('#ff0000cc')
+        else
+          lc.text = tostring(base or '')
+          -- 字号 = 半径 × V.letterScale，**下限 15**：4/链珠/绑定球的自然值都 ≥15，
+          -- 所以这个下限只抬升 ③ 那颗最小的球（10.7 → 12 抬到 15）。别改成整体放大，更别加描边。
+          lc.fontSize = math.max(15, math.floor(rr * V.letterScale))
+          lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
+          lc.bgColor = hexColor('#00000000')
+        end
         setVisible(ui, lc, true)
       end
     end

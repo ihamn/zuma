@@ -275,9 +275,15 @@ do
   local lr2 = GAME.ui.loaded[2].sizeDeltaX / 2
   H.eq(GAME.ui.loadedLetter[1].fontSize, math.max(15, math.floor(lr1 * 1.15)),
     '★ ④ 炮口球字母字号 = max(15, r×1.15) = ' .. tostring(GAME.ui.loadedLetter[1].fontSize))
-  H.eq(GAME.ui.loadedLetter[2].fontSize, math.max(15, math.floor(lr2 * 1.15)),
-    '★ ③ 预备球字母字号（下限 15，真机 scale=1 时从 12 抬到 15）= ' .. tostring(GAME.ui.loadedLetter[2].fontSize))
-  H.ok(GAME.ui.loadedLetter[2].fontSize >= 15, '★ ③ 的字号不许低于 15（低于就真机看不见）')
+  if GAME.ui.letterProbe ~= 0 then
+    -- 探针模式（默认开）：③ 被改成"大框 + 红底 + 白字 24px"，用来判定真机到底画不画这个控件
+    H.eq(GAME.ui.loadedLetter[2].fontSize, 24, '★ 探针：③ 的字号被设成 24（红底白字方块）')
+    H.ok(GAME.ui.loadedLetter[2].sizeDeltaX > lr2 * 2, '★ 探针：③ 的框被放大（> 球直径）')
+  else
+    H.eq(GAME.ui.loadedLetter[2].fontSize, math.max(15, math.floor(lr2 * 1.15)),
+      '★ ③ 预备球字母字号（下限 15，真机 scale=1 时从 12 抬到 15）= ' .. tostring(GAME.ui.loadedLetter[2].fontSize))
+    H.ok(GAME.ui.loadedLetter[2].fontSize >= 15, '★ ③ 的字号不许低于 15（低于就真机看不见）')
+  end
   -- ★★ 建法回到"④ 正常"那一版：字母紧跟两颗待发球建（**在 HUD 之前**），
   --    靠"后建=在上"盖住球和描边即可 —— 不再挪到 M.create 末尾（那笔改动把 ④ 弄糊了）。
   H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[2].Id, '★ 字母建在两颗待发球之后（z 序在上）')
