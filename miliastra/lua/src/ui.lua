@@ -643,9 +643,14 @@ local function syncEgg(ui, sc, st)
   setVisible(ui, e.scrim, inEgg)
   setVisible(ui, e.title, inEgg)
   for i = 1, #e.lines do setVisible(ui, e.lines[i], inEgg) end
-  for i = 1, #e.btn do
-    setVisible(ui, e.btn[i], inEgg)
-    setVisible(ui, e.btnLabel[i], inEgg)
+  -- ⚠⚠ 按钮是**和菜单共用**的池子：**只有进了彩蛋屏才动它们**。
+  --   踩过：这里无条件 `setVisible(..., inEgg)` ⇒ 菜单里刚摆好的关卡按钮被这行全藏掉，
+  --   屏幕上只剩三个分组标题（出图才看出来）。
+  if inEgg then
+    for i = 1, #e.btn do
+      setVisible(ui, e.btn[i], true)
+      setVisible(ui, e.btnLabel[i], true)
+    end
   end
   if not inEgg then return end
 

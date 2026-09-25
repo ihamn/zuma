@@ -2888,9 +2888,14 @@ local function syncEgg(ui, sc, st)
   setVisible(ui, e.scrim, inEgg)
   setVisible(ui, e.title, inEgg)
   for i = 1, #e.lines do setVisible(ui, e.lines[i], inEgg) end
-  for i = 1, #e.btn do
-    setVisible(ui, e.btn[i], inEgg)
-    setVisible(ui, e.btnLabel[i], inEgg)
+  -- ⚠⚠ 按钮是**和菜单共用**的池子：**只有进了彩蛋屏才动它们**。
+  --   踩过：这里无条件 `setVisible(..., inEgg)` ⇒ 菜单里刚摆好的关卡按钮被这行全藏掉，
+  --   屏幕上只剩三个分组标题（出图才看出来）。
+  if inEgg then
+    for i = 1, #e.btn do
+      setVisible(ui, e.btn[i], true)
+      setVisible(ui, e.btnLabel[i], true)
+    end
   end
   if not inEgg then return end
 
@@ -4219,7 +4224,7 @@ function G.boot()
   --   菜单态里 tick 不推进盘面，所以它是静止的。
   --   levelIndex 那个脚本变量仍然有效：想**跳过菜单**直接进某一关，就填 levelIndex=8（配 skipMenu=1）。
   G.menuItems = MENU.items(LEVELS_DATA.LEVELS, LEVELS_DATA.TUTORIAL_COUNT or 0)
-  G.screen = (param('skipMenu', 0) == 1) and 'playing' or 'menu'
+  G.screen = (param('skipMenu', 0) == 1) and ((param('egg',0)==1) and 'egg' or 'playing') or ((param('egg',0)==1) and 'egg' or 'menu')
   say('开始菜单：%d 个条目（新手关 %d + 核心关 %d）；当前屏幕=%s（skipMenu=1 可跳过菜单）',
     #G.menuItems, tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0,
     #G.menuItems - (tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0), tostring(G.screen))
@@ -4364,12 +4369,52 @@ function G.tick(dt)
       local mx, my = G.input.clickX, G.input.clickY
       INPUT.consume(G.input)
       if mx then
+        -- ★ 彩蛋开始按键：菜单右下角那颗「◈ 交易所」（命中公式与 ui.syncEgg 的摆放一致）
+        local s = G.sc.metrics.scale
+        local ex, ey = G.view.w - 130 * s, G.view.h - 62 * s
+        if math.abs(mx - ex) <= 104 * s and math.abs(my - ey) <= 33 * s then
+          G.egg = G.egg or require('egg').new(G.levelIndex * 7919 + 13)
+          G.screen = 'egg'
+          UI.sync(G.ui, G.sc, G.syncState(dt))
+          return
+        end
         local L = MENU.layout(G.view, G.sc.metrics, G.menuItems)
         local item = MENU.pick(L, mx, my)
         if item then
           G.startLevel(item.index + 1)        -- 本体 0 基 / 移植侧 1 基
           return
         end
+      end
+    end
+    UI.sync(G.ui, G.sc, G.syncState(dt))
+    return
+  end
+
+  -- ★★ 彩蛋屏「璃月黄金交易所」：只跑交易所自己的时间，**不推进盘面**（和菜单同理）
+  if G.screen == 'egg' then
+    local EGG = require('egg')
+    G.egg = G.egg or EGG.new(20260925)
+    EGG.tick(G.egg, dt)
+    if (G.input.pending or 0) > 0 then
+      local mx, my = G.input.clickX, G.input.clickY
+      INPUT.consume(G.input)
+      if mx then
+        local s = G.sc.metrics.scale
+        local bw, bh = 190 * s, 62 * s
+        local hit = 0
+        for i = 1, 6 do
+          local col = (i - 1) % 3
+          local row = math.floor((i - 1) / 3)
+          local bx = G.view.w * 0.5 + (col - 1) * (bw + 26 * s)
+          local by = G.view.h * 0.66 + row * (bh + 22 * s)
+          if math.abs(mx - bx) <= bw * 0.5 and math.abs(my - by) <= bh * 0.5 then hit = i end
+        end
+        if hit == 1 then EGG.buy(G.egg, 1)
+        elseif hit == 2 then EGG.sell(G.egg, 1)
+        elseif hit == 3 then EGG.borrowCash(G.egg)
+        elseif hit == 4 then EGG.borrowGold(G.egg)
+        elseif hit == 5 then EGG.work(G.egg)
+        elseif hit == 6 then G.screen = 'menu' end
       end
     end
     UI.sync(G.ui, G.sc, G.syncState(dt))
@@ -4515,6 +4560,7 @@ function G.syncState(dt)
     mate = G.mateText and G.mateText() or nil,
     -- ★ 菜单：UI 层要知道"现在是不是菜单态"，以及按钮画在哪（布局在 menu.lua 里算，进对拍）
     screen = G.screen,
+    egg = G.egg,                        -- ★ 彩蛋「璃月黄金交易所」的状态（ui.syncEgg 读它）
     -- ★ 优化（2026-09-25）：菜单布局**只在菜单态才算**，而且算一次就缓存 ——
     --   原来每帧都调 MENU.layout（一次分配十几张表），真机 Lua 的 GC 会因此抖动；
     --   而菜单是**静止**的（菜单态不推进盘面），画布/条目不变就没必要重算。

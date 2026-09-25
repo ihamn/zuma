@@ -89,6 +89,8 @@ const mounted = rt.mountScript({
     ...(function () { const z = flag('zoom', ''); return z ? { zoom: Number(z) } : {}; })(),
     // --skipMenu=1：跳过开始菜单直接进关（出图/探针用；本体开局是在菜单里的）
     ...(function () { const s = flag('skipMenu', ''); return s ? { skipMenu: Number(s) } : {}; })(),
+    // --egg=1：直接进彩蛋屏「璃月黄金交易所」（出图用）
+    ...(function () { const s = flag('egg', ''); return s ? { egg: Number(s) } : {}; })(),
   },
 })
 
