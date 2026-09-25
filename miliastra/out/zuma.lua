@@ -2728,10 +2728,15 @@ function M.create(opts)
     m.title = mkText('菜单标题控件', 1)
     m.subtitle = mkText('菜单副标题控件', 1)
     m.footer = mkText('菜单说明控件', 1)
-    m.groups = { mkText('菜单分组控件', 1), mkText('菜单分组控件', 2) }
+    -- ⚠ 分组标题池同理：原来只有 2 个，加第三组后"经典祖玛"这行标题没控件可画（和按钮池同一类坑）
+    m.groups = { mkText('菜单分组控件', 1), mkText('菜单分组控件', 2),
+                 mkText('菜单分组控件', 3), mkText('菜单分组控件', 4) }
     m.btn = {}
     m.btnLabel = {}
-    for i = 1, 10 do
+    -- ⚠ 按钮池要**够放全部关卡**：原来写死 10 个，加了经典关（11 关）之后第 11 个按钮压根不存在
+    --   ⇒ 菜单里第三组整个不显示（实测踩过：图上只有新手关/核心关）。
+    --   留到 16 个，以后再加关也不用动这里。
+    for i = 1, 16 do
       m.btn[i] = build(ballPrefab, '菜单按钮控件', i)
       softEdge(m.btn[i], false, 0)
       m.btnLabel[i] = mkText('菜单按钮文字控件', i)
