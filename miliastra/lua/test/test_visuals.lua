@@ -250,6 +250,12 @@ do
   H.eq(GAME.ui.loadedLetter[2].text, tostring(rb.loaded[2]),
     '★ 预备球字母 = rb.loaded[2] = ' .. tostring(rb.loaded[2]))
   H.eq(GAME.ui.loadedHalo[1].visible, true, '★ 炮口球带白色描边（本体那颗 glow=true）')
+  -- ★★ 这两颗待发球字母**不许开描边**：小字号下描边会吃掉笔画（真机上 ④ 就是这么被我改坏的）
+  H.eq(GAME.ui.loadedLetter[1].enableOutline, false, '★ 炮口球字母不开描边（开了会把字吃掉）')
+  H.eq(GAME.ui.loadedLetter[2].enableOutline, false, '★ 预备球字母不开描边')
+  -- ★ z 序：字母必须**晚于**待发球创建（真机后建的盖在上面）
+  H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[1].Id, '★ 字母建在球之后（z 序更靠上）')
+  H.ok(GAME.ui.loadedLetter[2].Id > GAME.ui.loaded[2].Id, '★ 预备球字母也建在球之后')
 
   -- ★ 大小球配比 = √2（DESIGN 的识别通道：出球道大球 / 三消道小球）
   local mt = GAME.sc.metrics

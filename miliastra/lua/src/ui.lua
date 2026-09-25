@@ -426,9 +426,13 @@ function M.create(opts)
       local c = build(hudPrefab, '待发球字母控件', i)
       c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
       c.verticalAlignment = Enum.TextVerticalAlignment.Middle
-      c.enableOutline = true
-      -- ★ 再用 SetAsLastSibling **强制置顶**（诊断行就是这么保证不被盖住的）。
-      --   官方接口在部分运行时没有 → pcall 包住，没有也不影响。
+      -- ★★ **绝对不要给这两颗字母加描边**（enableOutline）！
+      --    2026-09-25 真机教训：本体用的是**粗体**，我一度拿"白描边"当粗体替代品，
+      --    结果 12~19px 这么小的字号下描边把笔画吃掉 → ④ 从"正常"变成"看不见"，
+      --    ③ 更小更糊。字号放大就够，描边一律关（本体也没有描边，是纯粗体字）。
+      c.enableOutline = false
+      -- 再用 SetAsLastSibling **强制置顶**（诊断行就是这么保证不被盖住的）。
+      -- 官方接口在部分运行时没有 → pcall 包住，没有也不影响。
       if c.SetAsLastSibling then pcall(function() c:SetAsLastSibling() end) end
       ui.loadedLetter[i] = c
     end
@@ -792,10 +796,10 @@ function M.sync(ui, sc, st)
         local d2 = 2 * rr
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
         lc.text = tostring(base or '')
-        -- ★ 待发球字母：本体 `drawBead` 用的是**粗体**（`bold …px`），我们设不了粗体 ——
-        --   ③ 预备球半径只有 10.7，细字压在彩球上真机看着就是"没字母"。
-        --   替代方案：字号比链珠字母放大一号（1.15 → 1.35）+ 白描边（建的时候已开）。
-        lc.fontSize = math.max(11, math.floor(rr * 1.35))
+        -- ★ 本体 `drawBead` 用**粗体**（`bold …px`），控件设不了粗体；
+        --   替代品只有"字号略大"这一条 —— **不能用描边**（小字号下描边会吃掉笔画，
+        --   真机上 ④ 就是这样从"正常"变"看不见"的）。1.25 倍 + 下限 10 是实测能看清又不溢出球面的档。
+        lc.fontSize = math.max(10, math.floor(rr * 1.25))
         lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
         setVisible(ui, lc, true)
       end
