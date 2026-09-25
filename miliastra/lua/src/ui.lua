@@ -675,7 +675,14 @@ local function syncEgg(ui, sc, st)
     end
     for i = 1, #e.chart do raise(e.chart[i]) end
   end
-  if not inEgg then return end
+  -- ★★ 退出交易所时必须**主动把折线藏掉** ✗ ——
+  --   下面的代码靠 `if not inEgg then return end` 早退，早退就**跳过了清理**
+  --   ⇒ 折线控件留在菜单/关卡画面上（奇匠："退出交易所后折线图不会消失"）。
+  --   （和"门禁把交易所暗幕藏掉"、"彩蛋把菜单按钮藏掉"是同一类坑：**早退前先做完自己的收尾** ✓）
+  if not inEgg then
+    for i = 1, #e.chart do setVisible(ui, e.chart[i], false) end
+    return
+  end
 
   -- ★ 彩蛋屏要把**局内 HUD 全藏掉**（分数/连读/命/模式/提示都不该出现在交易所里）。
   --   syncMenu 在本函数**之前**跑，所以这里覆盖它、且只在彩蛋屏生效。
