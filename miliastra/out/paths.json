@@ -4258,9 +4258,9 @@
    ]
   },
   {
-   "id": "spiral-outer",
-   "name": "螺旋 · 出球道在外",
-   "short": "螺旋·外",
+   "id": "spiral-inner",
+   "name": "螺旋 · 出球道在内",
+   "short": "螺旋·内",
    "spineRecipe": {
     "spine": "spiralSpine",
     "turns": null,

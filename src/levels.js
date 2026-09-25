@@ -14,20 +14,23 @@
 import { spiralSpine, crossReturnSpine } from './spines.js';
 
 export const LEVELS = [
-  // ★ 2026-09-25 关卡表变更（奇匠先说反了一次，这是更正后的最终状态）：
-  //   **删掉 'spiral-inner'（螺旋 · 出球道在内）**，保留 'spiral-outer'（出球道在外）。
-  //   同时把新手关里唯一用"内"的那一关（t7-mix）也换成"外" ——
-  //   于是**整个游戏不再出现 `railOrder: 'spawn-inner'`**。
+  // ★ 2026-09-25 关卡表变更【最终定稿】：**删掉 'spiral-outer'（螺旋 · 出球道在外）**，
+  //   保留 'spiral-inner'（出球道在内）。新手关 t1~t7 也全部用 `spawn-inner`。
+  //   定稿依据：我把两种 railOrder 各渲染一张图给奇匠指认（rail-A = 在外 / rail-B = 在内），
+  //   奇匠明确选 **B 出球道在内**。
+  //   （中间来回过一次：奇匠先说"外螺旋是伪命题"，中途又说"内外搞反了"，
+  //    最后用出图指认的方式定死 —— 这类"哪种布局"的问题，**出两张图让人指**比文字描述可靠得多。）
   //   影响面（已同步）：本体测试 test-tutorial.mjs 的 LEVELS 断言、tools/smoke.mjs 的核心关下标、
   //   tools/test-{geometry,insert}.mjs 里按数字下标取"交叉关"的三处（改成按 id 查）、
   //   导出物 miliastra/lua/src/levels_data.lua、DESIGN.md 数值表、手册里的关卡编号。
   //   ⚠ 教训：测试里**别按数字下标取关卡**（`LEVELS[2]` 删一关就静默指向别的关）。
+  //   ⚠⚠ 另一个坑：试玩台读的是**打包产物** out/zuma.lua —— 改完关卡数据要出图，必须先 bundle。
   {
-    id: 'spiral-outer',
-    name: '螺旋 · 出球道在外',
-    short: '螺旋·外',
+    id: 'spiral-inner',
+    name: '螺旋 · 出球道在内',
+    short: '螺旋·内',
     makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     prefill: 14,
     ballBudget: 48,
@@ -111,7 +114,7 @@ export const TUTORIALS = [
     short: '配对',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -134,7 +137,7 @@ export const TUTORIALS = [
     short: '三的倍数',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -153,7 +156,7 @@ export const TUTORIALS = [
     short: '配错的代价',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -175,7 +178,7 @@ export const TUTORIALS = [
     short: '加球',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     // ★ §65 加球也放在静止练习里（用户：「洞穴往后放放」）——
     //   插入靠的是绳模型的"顶开"，而静止关**速度归零但绳模型照跑**，
@@ -198,7 +201,7 @@ export const TUTORIALS = [
     short: '死球',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -220,7 +223,7 @@ export const TUTORIALS = [
     name: '⑥ 洞穴',
     short: '洞穴',
     makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     bases: ['A', 'U'],
     script: 'A U A U A U A U A U',
@@ -239,7 +242,7 @@ export const TUTORIALS = [
     name: '⑦ 综合',
     short: '综合',
     makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     ballBudget: 36,
     prefill: 16,

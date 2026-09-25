@@ -16,7 +16,7 @@ https://github.com/ihamn/zuma
 
 ## 直链（在电脑浏览器里粘这一行就下）
 
-**① 游戏要用的包** — 69,742 字节
+**① 游戏要用的包** — 69,757 字节
 ```
 https://ghproxy.net/https://raw.githubusercontent.com/ihamn/zuma/main/miliastra/pc/zuma-pc.zip
 ```
@@ -59,9 +59,9 @@ https://cdn.jsdelivr.net/gh/ihamn/zuma@main/
 
 | 文件 | 字节数 | 属性里显示约 | sha256 |
 |---|---|---|---|
-| `zuma-pc.zip` | 69,742 | 68.1 KB | `14e7cdfee8dd8a666ff7094b75fee189bf0ab8e70fe294bda3e2da40adaf929c` |
+| `zuma-pc.zip` | 69,757 | 68.1 KB | `92565a49edb365fbcf50ea296d5eda1122f277ab6f84df4fcf0f8d49eb9c7364` |
 | `dsh-session.zip` | 18,714,097 | 17.8 MB | `233ccbc40484ac58d891ed1798ef2a354c249fb7332e983eab3f9b850f1c51a8` |
-| `zuma.lua` | 157,535 | 153.8 KB | `fd7283e404c911c667ce3daf6fc481890bc865b033c5094fede66764bdc94229` |
+| `zuma.lua` | 157,535 | 153.8 KB | `6e41f57c143eb59c8a87c4639d3670f7a0d6237d369dbdf63d1ab3f83b5a7748` |
 | `hello.lua` | 5,141 | 5.02 KB | `3d6f67feaf7298c94ac7511f82776bf94fbe81510ef9288f521c8010b32dc9e8` |
 | `manual.html` | 28,870 | 28.2 KB | `83596bd376348f64341cc7bc537086d67ecbadf279e4e8b660c963afd9a0a076` |
 | `README.txt` | 837 | 0.82 KB | `18154af54fc0e0322f12f1339a5c92cd5e769adbad6cde544514567d137e7399` |

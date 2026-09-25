@@ -28,7 +28,7 @@ host.scriptObj.object = host.root
 host.mount(GAME)
 
 local total = #LEVELS_DATA.LEVELS
-H.eq(total, 10, '一共 10 关（2026-09-25 删掉了 spiral-inner）')
+H.eq(total, 10, '一共 10 关（2026-09-25 删掉了 spiral-outer）')
 
 local function cursorAt(b) return b.x, CANVAS - b.y end
 

@@ -17,7 +17,7 @@ MOCK.install(host)
 local function freshScene(seed)
   local view = CFG.viewFor(900, 900)
   local mt = CFG.metrics(view.scale)
-  local level = require('levels_data').byId('spiral-outer')   -- spiral-inner 已于 2026-09-25 删除
+  local level = require('levels_data').byId('spiral-inner')   -- spiral-outer 已于 2026-09-25 删除
   local sc = BOARD.assembleScene(level, view, seed or 20260925)
   return sc, mt
 end

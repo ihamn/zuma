@@ -3442,7 +3442,7 @@ ok  整个界面没有任何文案泄漏 Infinity / NaN / undefined / null
 
 `
 关卡           匹配模式        七球模式                    反应次数
-（spiral-inner 已于 2026-09-25 删除，见 §关卡表下方注；下表保留当年实测的 spiral-outer 一行）
+（spiral-outer 已于 2026-09-25 删除，见 §关卡表下方注；下表保留当年实测的 spiral-outer 一行）
 spiral-outer   30.8s clear     26.9~43.3s  clear           41~51
 cross-return   40.2s clear     48.4~54.3s  clear           58~63
 endless        30.1s score     7.7~22.2s   score           28~34
