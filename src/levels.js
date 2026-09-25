@@ -272,9 +272,11 @@ export const CLASSIC_LEVELS = [
     makeSpine: spiralSpine,
     railOrder: 'spawn-outer',
     layers: null,
-    // 经典玩法是"打进去凑同色"，铺得比 RNA 关多一些、预算给大一点
-    prefill: 18,
-    ballBudget: 40,
+    // 经典玩法节奏更慢（要一颗颗凑同色），轨道给足：
+    //   轨道长度是按预算反解圈数来的 —— 40 只有 1968 单位（用户报"太短"），
+    //   64 → 3128（+59%），80 → 3204 已是这条螺旋的上限。
+    prefill: 28,
+    ballBudget: 64,
     scoreTarget: Infinity,
   },
 ];

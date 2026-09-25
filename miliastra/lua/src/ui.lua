@@ -299,7 +299,7 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
   --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
-  ui.trackSegments = opts.trackSegments or 40
+  ui.trackSegments = opts.trackSegments or 64
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
@@ -491,7 +491,7 @@ function M.create(opts)
     -- ⚠ 按钮池要**够放全部关卡**：原来写死 10 个，加了经典关（11 关）之后第 11 个按钮压根不存在
     --   ⇒ 菜单里第三组整个不显示（实测踩过：图上只有新手关/核心关）。
     --   留到 16 个，以后再加关也不用动这里。
-    for i = 1, 16 do
+    for i = 1, 12 do
       m.btn[i] = build(ballPrefab, '菜单按钮控件', i)
       softEdge(m.btn[i], false, 0)
       m.btnLabel[i] = mkText('菜单按钮文字控件', i)

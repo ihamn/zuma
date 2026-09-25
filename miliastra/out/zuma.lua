@@ -2213,8 +2213,8 @@ M.LEVELS = {
     railOrder = "spawn-outer",
     turns = nil,
     innerRatio = nil,
-    prefill = 18,
-    ballBudget = 40,
+    prefill = 28,
+    ballBudget = 64,
     scoreTarget = math.huge,
     still = false,
     centerChain = false,
@@ -2544,7 +2544,7 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
   --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
-  ui.trackSegments = opts.trackSegments or 40
+  ui.trackSegments = opts.trackSegments or 64
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
@@ -2736,7 +2736,7 @@ function M.create(opts)
     -- ⚠ 按钮池要**够放全部关卡**：原来写死 10 个，加了经典关（11 关）之后第 11 个按钮压根不存在
     --   ⇒ 菜单里第三组整个不显示（实测踩过：图上只有新手关/核心关）。
     --   留到 16 个，以后再加关也不用动这里。
-    for i = 1, 16 do
+    for i = 1, 12 do
       m.btn[i] = build(ballPrefab, '菜单按钮控件', i)
       softEdge(m.btn[i], false, 0)
       m.btnLabel[i] = mkText('菜单按钮文字控件', i)
@@ -3523,7 +3523,7 @@ __M["game"] = function()
 --   shotCount    弹药池大小                                      [8]
 --   fancy        光晕 / 冷却环 / 动效（0 = 只留静态画面）          [1]
 --   track        轨道也由 Lua 画（0 = 用编辑器里摆的静态图）      [1]
---   trackSegments 每条轨画多少段（控件紧张时调小）                [40]
+--   trackSegments 每条轨画多少段（⚠ 调小省控件但真机有接缝）      [64]
 --   letters      球面叠碱基字母（0 = 只靠图片素材）               [1]
 --   seed         随机种子                                        [12345]
 --   autoNext     过关后自动进下一关（0 = 不自动）                [1]
@@ -4052,7 +4052,7 @@ function G.boot()
     -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
     fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
     track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
-    trackSegments = param('trackSegments', 40),   -- ★ 优化：64→40（省 48 个控件，看不出差别）
+    trackSegments = param('trackSegments', 64),   -- ⚠ 别为了省控件调小：真机轨道会出现接缝（出图看不出来，踩过）
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = G.prefabs.hud,
     hud = buildHudSpecs(w, h, G.teach),

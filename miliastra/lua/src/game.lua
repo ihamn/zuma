@@ -20,7 +20,7 @@
 --   shotCount    弹药池大小                                      [8]
 --   fancy        光晕 / 冷却环 / 动效（0 = 只留静态画面）          [1]
 --   track        轨道也由 Lua 画（0 = 用编辑器里摆的静态图）      [1]
---   trackSegments 每条轨画多少段（控件紧张时调小）                [40]
+--   trackSegments 每条轨画多少段（⚠ 调小省控件但真机有接缝）      [64]
 --   letters      球面叠碱基字母（0 = 只靠图片素材）               [1]
 --   seed         随机种子                                        [12345]
 --   autoNext     过关后自动进下一关（0 = 不自动）                [1]
@@ -549,7 +549,7 @@ function G.boot()
     -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
     fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
     track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
-    trackSegments = param('trackSegments', 40),   -- ★ 优化：64→40（省 48 个控件，看不出差别）
+    trackSegments = param('trackSegments', 64),   -- ⚠ 别为了省控件调小：真机轨道会出现接缝（出图看不出来，踩过）
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = G.prefabs.hud,
     hud = buildHudSpecs(w, h, G.teach),
