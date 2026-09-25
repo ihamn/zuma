@@ -3110,23 +3110,29 @@ end
 
 -- 玩区容器的尺寸 = 画布尺寸；它以画布中心为原点
 -- panel: 'solid'（默认，65% 底板）/ 'light'（40%，给大块文字）/ false（不画底板）
-local function buildHudSpecs(w, h)
+-- ★★ 规则：移植版**默认要和本体长得一样**。
+--   下面这两条是移植期加的"辅助线"，本体没有 —— 所以**默认关**，要排查时填脚本变量开：
+--     diag=1  → 左下角那行状态（帧/关卡/球数/控件数/状态）
+--     teach=1 → 左上角两行教学（手里该打谁 + 上次命中判定）
+--   默认全关时，屏幕上的东西和网页版一一对应，不多一个字。
+local function buildHudSpecs(w, h, teach)
   local pad = 16
   local halfW, halfH = w / 2, h / 2
-  return {
+  local specs = {
     { key = 'score', x = -halfW + 120 + pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'left' },
     { key = 'lives', x = halfW - 120 - pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'right' },
     { key = 'runs', x = -halfW + 220 + pad, y = halfH - 84 - pad, w = 440, h = 40, size = 26, align = 'left' },
     { key = 'mode', x = -halfW + 120 + pad, y = -halfH + 32 + pad, w = 240, h = 44, size = 26, align = 'left' },
-    -- ★★ 两条"教玩家怎么打"的诊断行（都在左上、不挡棋盘）：
-    --   mate：手里这颗该打谁（A 要打 U/T）—— 这才是 RNA 的规则，不是"同色消除"
-    --   hit ：最近一次命中的判定（配对 ✅ / 错配 ❌），省得去翻日志
-    { key = 'mate', x = -halfW + 120 + pad, y = halfH - 178 - pad, w = 640, h = 36, size = 22, align = 'left' },
-    { key = 'hit', x = -halfW + 120 + pad, y = halfH - 136 - pad, w = 640, h = 36, size = 22, align = 'left' },
     { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center', panel = 'light' },
     -- 结果框在正中央：**平时没有文字**，所以不给底板（给了就是一块盖住核糖体的黑板）
     { key = 'result', x = 0, y = 0, w = math.min(w - 40, 640), h = 120, size = 40, align = 'center', panel = false },
   }
+  -- teach=1 才加那两行辅助（本体没有）：手里该打谁 + 上次命中判定
+  if teach then
+    specs[#specs + 1] = { key = 'mate', x = -halfW + 120 + pad, y = halfH - 178 - pad, w = 640, h = 36, size = 22, align = 'left' }
+    specs[#specs + 1] = { key = 'hit', x = -halfW + 120 + pad, y = halfH - 136 - pad, w = 640, h = 36, size = 22, align = 'left' }
+  end
+  return specs
 end
 
 -- ==================== 启动 ====================
@@ -3145,7 +3151,8 @@ function G.OnInit()
   if not ok0 then w, h = 900, 900 end
   G.canvas = { w = w, h = h }
   G.view = CFG.viewFor(w, h)
-  G.diag = param('diag', 1) ~= 0
+  G.diag = param('diag', 0) ~= 0        -- ★ 默认关：屏幕上要和本体一样，不多一个字
+  G.teach = param('teach', 0) ~= 0      -- ★ 默认关：教学辅助行（手里该打谁 / 上次命中判定）
   G.error = nil          -- ★ 每次重来都清掉：否则上一次的错误会一直挂在屏幕上（测试抓到的）
   G.booted = false
 
@@ -3417,7 +3424,7 @@ function G.boot()
     trackSegments = param('trackSegments', 64),
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = G.prefabs.hud,
-    hud = buildHudSpecs(w, h),
+    hud = buildHudSpecs(w, h, G.teach),
   })
 
   G.input = INPUT.create({
@@ -3474,10 +3481,15 @@ end
 -- ==================== 诊断行 ====================
 
 -- ★ 这一行是"远程排错"的生命线：用户把屏幕上这句话念给我，我就知道卡在哪。
+--   ⚠ 但出**错**时必须永远显示（那不属于"辅助线"，是救命的）—— 只有"正常状态那行"受 diag 开关控制。
 function G.refreshDiag()
-  if not G.diag then return end
   local hc = G.diagControl
   if not hc then return end
+  if not G.diag and not G.error then
+    -- 没开辅助线、也没出错 → 这一格留空（空文字会被隐藏，屏幕上和本体一致）
+    if hc.text ~= '' then hc.text = '' end
+    return
+  end
   local s
   if G.error then
     s = '!! ' .. G.error

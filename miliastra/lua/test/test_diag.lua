@@ -25,6 +25,8 @@ local function newHost(opts)
   host.params.ballCount = 8
   host.params.shotCount = 2
   host.params.autoNext = 0
+  -- ★ 诊断行现在**默认关**（屏幕上要和本体一致）；这条测试是专门测它的，所以显式打开
+  host.params.diag = 1
   if opts.failCursor then host.failPrefabs = { [3] = true } end
   MOCK.install(host)
   if not opts.noRoot then host.scriptObj.object = host.root else host.roots = {}; host.scriptObj.object = nil end
@@ -79,5 +81,27 @@ H.eq(GAME.error, nil, '重新初始化后错误被清掉')
 H.eq(GAME.screen, 'playing', '回到 playing')
 GAME.OnUpdate(1 / 60)
 H.eq(GAME.screen, 'playing', '继续跑一帧没问题')
+
+-- ★ 默认（不填 diag）时屏幕上不该有诊断文字 —— "移植版默认要和本体一样"
+do
+  local h = newHost()
+  h.params.diag = nil                     -- 显式不填 = 用脚本默认值
+  lifecycle(h)
+  GAME.frames = 3
+  GAME.refreshDiag()
+  H.eq(GAME.diag, false, '★ diag 默认关（屏幕上不多一个字）')
+  H.eq(GAME.diagControl.text, '', '默认时诊断框文字为空（空文字会被隐藏）')
+end
+
+-- ★ 但**出错**时必须显示，哪怕没开 diag（这是救命的那行，不属于辅助线）
+do
+  local h = newHost()
+  h.params.diag = nil
+  lifecycle(h)
+  GAME.error = '测试用的错误'
+  GAME.refreshDiag()
+  H.truthy(GAME.diagControl.text:find('测试用的错误') ~= nil,
+    '★ 出错时诊断框照样显示：' .. tostring(GAME.diagControl.text))
+end
 
 H.finish()
