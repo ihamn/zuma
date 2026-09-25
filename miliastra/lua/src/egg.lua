@@ -60,6 +60,9 @@ function M.new(seed)
     traded    = 0,         -- 成交次数
     interestPaid = 0,      -- 累计付出的利息（用来点题"负和"）
     lastDelta = 0,
+    -- ★ 价格历史给界面画折线图。**开局就放一个初始价** ——
+    --   否则第一个点是在第一次报价之后才记的，前两个点同值 ⇒ 画出来是零高度的线，看不见（踩过）。
+    hist      = { M.PRICE0 },
     log       = {},
   }
   return st
