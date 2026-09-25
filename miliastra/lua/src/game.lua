@@ -103,8 +103,10 @@ end
 --   （也可以直接填 `artImage=1073741860` 指定；或按碱基分别填 `art=A:id,U:id,...`）
 local function adoptImageId(root)
   local found = {}
+  local seen = {}
   local function walk(ctrl, depth)
-    if not ctrl or depth > 3 or #found >= 8 then return end
+    if not ctrl or depth > 4 or #found >= 12 or seen[ctrl] then return end
+    seen[ctrl] = true
     local ok, kids = pcall(function() return ctrl:GetChildren() end)
     if not ok or type(kids) ~= 'table' then return end
     for i = 1, #kids do
@@ -117,7 +119,19 @@ local function adoptImageId(root)
       walk(ch, depth + 1)
     end
   end
+  -- ① 挂载点往下；② 挂载点往上的三层（用户可能把"配好图的控件"摆在画布别处）；
+  -- ③ 官方 game.GetClientUIRoots()（"实际显示的画布默认容器节点"）各自的子树。
   walk(root, 1)
+  local up = root
+  for _ = 1, 3 do
+    if not up then break end
+    up = up.parent
+    walk(up, 1)
+  end
+  local okr, roots = pcall(function() return game.GetClientUIRoots() end)
+  if okr and type(roots) == 'table' then
+    for i = 1, #roots do walk(roots[i], 1) end
+  end
   return found
 end
 
@@ -371,10 +385,16 @@ function G.boot()
   G.cursorArea:SetSizeDelta(w, h)
   say('玩区 = %s / 光标区 = %s', tostring(G.area), tostring(G.cursorArea))
 
-  -- ★ 球面素材 id：默认**不打补丁**（球就用模板自带那张图）。
-  --   真机踩过：写死 SetImage(1..5) 时每颗球都画成"**?**"—— 编辑器里的素材 id 不是 1..5。
-  --   要指定就填 art=A:1073741860,U:1073741861,G:...,C:...,T:...（id 在编辑器点开素材能看到）
+  -- ★★ 球面素材 id。
+  --   真机事实（2026-09-25 用户实测）：**动态创建的图片控件不会继承模板/画布上那张图**，
+  --   必须脚本自己 `SetImage(Enum.ImageSource.StaticReference, <资产号>)`，
+  --   否则每个图片控件都画成"?"（球、轨道、中央核糖体全中招）。
+  --   优先级：art=A:id,U:id,...（按碱基分别指定）> artImage=<id> > 画布里借一张 > 默认值。
+  --   ⚠ 注意区分两个数字：**图片控件模板索引**（形如 1073741852）不是素材 id；
+  --     素材 id 是编辑器里那张图的"**资产号**"（用户那张白圆图 = 100002）。
+  local DEFAULT_ART = 100002
   local art = {}
+  local artAny = nil          -- 全局兜底资产号（棒/光晕/核糖体等不分碱基的控件用它）
   do
     local spec = param('art', '')
     if type(spec) == 'string' and spec ~= '' then
@@ -383,7 +403,6 @@ function G.boot()
         if k and v then art[k] = tonumber(v) end
       end
     end
-    -- 没按碱基指定 → 试"借"画布里现成那张图；再不行就看 artImage 变量
     if not next(art) then
       local one = tonumber(tostring(param('artImage', '')))
       if not one then
@@ -393,9 +412,14 @@ function G.boot()
         end
         if cand[1] then one = tonumber(tostring(cand[1].id)) end
       end
+      if not one then
+        one = DEFAULT_ART
+        say('没在画布里借到图 → 用默认资产号 %s（要换就填 artImage=<资产号>）', tostring(DEFAULT_ART))
+      end
       if one then
+        artAny = one
         for i = 1, #CFG.BASES do art[CFG.BASES[i]] = one end
-        say('★ 借用素材 id = %s 给全部碱基（想分别指定就填 art=A:id,U:id,...）', tostring(one))
+        say('★ 球面素材资产号 = %s（全部碱基共用；想分别指定就填 art=A:id,U:id,...）', tostring(one))
       end
     end
     if next(art) then
@@ -410,10 +434,48 @@ function G.boot()
     end
   end
 
+  -- ★★ imgTest=1：画一排"候选素材 id"格子（每格一个图片控件，下面一行小字写编号）。
+  --   为什么需要它：真机上**动态创建的图片控件不会继承模板/画布上那张图**，必须脚本用
+  --   SetImage(素材id) 指定；而"素材 id"在编辑器里是大数字，抄起来烦。
+  --   做法：把 2^30 起的一段候选 id 挨个试一遍，用户**看一眼哪格是白圆图**，报编号即可。
+  --   日志里同时打印"编号 -> id"的对应表（1 = 1073741825 …）。
+  if param('imgTest', 0) ~= 0 then
+    local base = tonumber(tostring(param('imgTestBase', ''))) or 1073741824
+    local n = tonumber(tostring(param('imgTestCount', ''))) or 24
+    local map = {}
+    for i = 1, n do
+      local id = base + i
+      local x = -w / 2 + 36 + (i - 1) * 66
+      local cell = game.InstantiateClientUIControl(G.prefabs.ball, G.area)
+      if cell then
+        cell:SetActive(true)
+        cell:SetVisible(true)
+        cell:SetSizeDelta(56, 56)
+        cell:SetAnchoredPosition(x, h / 2 - 44)
+        local ok = pcall(function() cell:SetImage(Enum.ImageSource.StaticReference, id) end)
+        if not ok then say('  imgTest %s：SetImage 报错', tostring(id)) end
+        local lab = game.InstantiateClientUIControl(G.prefabs.hud, G.area)
+        if lab then
+          lab:SetActive(true)
+          lab:SetVisible(true)
+          lab.text = tostring(i)
+          lab.fontSize = 16
+          lab.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+          lab:SetSizeDelta(60, 20)
+          lab:SetAnchoredPosition(x, h / 2 - 82)
+        end
+        map[#map + 1] = tostring(i) .. '=' .. tostring(id)
+      end
+    end
+    say('imgTest：上面那排格子的编号对应表 —— %s', table.concat(map, ' '))
+    say('imgTest：哪一格是白圆图，就把格子编号（或那个 id）填进 artImage=…')
+  end
+
   G.ui = UI.create({
     parent = G.area,
     canvas = G.canvas,
     art = art,
+    artAny = artAny,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

@@ -121,9 +121,9 @@ H.eq(GAME.prefabs.hud, 1073741850, '认出文本框模板 = 1073741850')
 H.eq(GAME.prefabs.cursor, 1073741860, '认出光标检测区域模板 = 1073741860')
 H.truthy(GAME.ui and #GAME.ui.balls > 0, '球池照常建出来：' .. tostring(GAME.ui and #GAME.ui.balls))
 
--- ⑨ ★★ 素材：没配 `art` 时**一次 SetImage 都不许调**。
---    真机踩过两次：写死 SetImage(1..5) → 每颗球画成"?"；后来只改了一半（洞穴光晕/核糖体/
---    冷却环还写死 1）→ 仍然"一堆问号"。这条断言就是钉死这个。
+-- ⑨ ★★ 素材：真机上**动态创建的图片控件不继承模板图** → 必须显式 SetImage(资产号)，
+--    否则球/轨道/中央核糖体全画成"?"（用户就是这样看到的）。
+--    所以现在的规则反过来：**不配也要设**，用默认资产号 100002。
 do
   local h9 = MOCK.newHost({ w = 900, h = 900 })
   h9.prefabs[1] = 'image'
@@ -134,7 +134,9 @@ do
   h9.scriptObj.object = h9.root
   h9.mount(GAME)
   H.eq(GAME.error, nil, '不配素材也能跑：' .. tostring(GAME.error))
-  H.eq(h9.stats.setImage or 0, 0, '★ 没配 art → SetImage 调用次数必须是 0（否则真机画成"?"）')
+  H.eq(GAME.ui.art['A'], 100002, '★ 不配 art → 用默认资产号 100002（白圆图）')
+  H.eq(GAME.ui.artAny, 100002, '兜底资产号也设上了（棒/光晕/核糖体用它）')
+  H.truthy((h9.stats.setImage or 0) > 0, '★ 必须真的调了 SetImage（真机不设就全是"?"）')
 end
 
 -- ⑩ 配了 art 时才按碱基换图（这时候才该调 SetImage）

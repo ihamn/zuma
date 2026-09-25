@@ -124,16 +124,18 @@ local function invalidateColor(ui, c)
   cache.__color = nil
 end
 
--- 图片素材 id：**默认不动**
---   ★ 血泪（2026-09-25 真机）：第一版把它写死成 `SetImage(1..5)`，而编辑器里的**素材 id
---     不是 1..5**（和控件模板索引一样是大数字，形如 1073741xxx）→ 找不到素材，
---     真机上每颗球都画成"**?**"贴图。
---   现在：`art` 为空 = **一次 SetImage 都不调**，球就用**你模板里那张图**（编辑器里配的），
---   我们只负责改颜色/位置/大小 + 叠一层字母文本框。
+-- 图片素材 id（真机结论，2026-09-25 用户实测）：
+--   ★★ **动态创建的图片控件不会继承模板/画布上那张图** —— 必须脚本显式
+--      `SetImage(Enum.ImageSource.StaticReference, <资产号>)`。不设 = 每个图片控件画成"?"，
+--      球 / 轨道（一堆棒拼的）/ 中央核糖体全能中招（用户就是这么看到的）。
+--   ★ 别把两个数字搞混：**图片控件模板索引**（形如 1073741852）不是素材 id；
+--      素材 id 是编辑器里那张图的"**资产号**"（当前用 100002 = 一张白圆图）。
+--   ui.artAny = 全局兜底资产号（棒/光晕/核糖体等不分碱基的控件用它）；
+--   ui.art[base] = 该碱基专属的图（不配就跟 artAny 一样）。
 local function artIdOf(ui, base)
-  if base == nil then return nil end
+  if base == nil then return ui.artAny end
   local a = ui.art
-  return a and a[base] or nil
+  return (a and a[base]) or ui.artAny
 end
 
 local function setImage(ui, c, id)
@@ -178,7 +180,9 @@ local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex, artId)
   if len < 1e-6 then setVisible(ui, c, false); return end
   place(ui, c, cx, cy, (x1 + x2) / 2, (y1 + y2) / 2, len, w, rotDeg(dx, dy))
   setColor(ui, c, hex)
-  setImage(ui, c, artId)        -- nil = 不动素材（用模板自带那张）
+  -- ★ 棒也要设素材：真机上不设就画成"?" —— 轨道/连线/瞄准线全是棒，
+  --   用户看到的"轨道是一堆问号拼出来的"就是这里。
+  setImage(ui, c, artId or ui.artAny)
 end
 
 -- 把一个控件当"一颗球"用
@@ -186,7 +190,7 @@ local function placeBead(ui, c, cx, cy, x, y, r, hex, artId)
   local d = 2 * r
   place(ui, c, cx, cy, x, y, d, d, 0)
   setColor(ui, c, hex)
-  setImage(ui, c, artId)        -- nil = 不动素材
+  setImage(ui, c, artId or ui.artAny)
 end
 
 -- 柔边（发光）：图片控件没有描边，靠 enableSoftEdge 做"糊一圈"的效果
@@ -246,6 +250,8 @@ function M.create(opts)
   -- ★ 素材 id：**默认不打补丁**（见文件顶部 artIdOf 的注释 —— 写死 1..5 会让真机全画成"?"）
   --   opts.art 给了才用；键是碱基（A/U/G/C/T），值是编辑器里那张图的素材 id。
   ui.art = opts.art or {}
+  -- 全局兜底资产号：棒/光晕/核糖体/冷却环这些不分碱基的控件用它（不设就全是"?"）
+  ui.artAny = opts.artAny or ui.art['A'] or ui.art[CFG.BASES[1]]
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
