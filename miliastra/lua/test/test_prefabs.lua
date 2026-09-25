@@ -68,4 +68,41 @@ local h4 = host({ autoPrefabs = 0 })
 H.eq(GAME.prefabs.ball, 1, 'autoPrefabs=0：球用默认值 1')
 H.eq(GAME.prefabs.cursor, 3, 'autoPrefabs=0：光标用默认值 3')
 
+-- ⑥ 容器节点模板可以**不建**：没有容器模板时直接用画布自带的默认容器节点
+local h5 = MOCK.newHost({ w = 900, h = 900 })
+h5.prefabs[2] = 'textbox'
+h5.prefabs[3] = 'cursorarea'
+h5.prefabs[1] = 'image'
+h5.params = { levelIndex = 1, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0, diag = 1 }
+MOCK.install(h5)
+h5.scriptObj.object = h5.root
+h5.mount(GAME)
+H.eq(GAME.error, nil, '只建 3 个模板（图片/文本框/光标区）也能跑：' .. tostring(GAME.error))
+H.eq(GAME.prefabs.play, nil, '没找到容器模板 → playPrefab 为空')
+H.eq(GAME.ui.parent, h5.root, '★ 玩区父节点直接用了画布的默认容器节点')
+H.truthy(GAME.ui.rb and GAME.ui.rb.visible, '照样把核糖体画出来了')
+
+-- ⑦ 类型不对要**当场报错**，而不是到真机才崩在"调用 nil"上
+--    （真机：图片控件没有 AddCursorEventListener / 文本框没有 SetImage）
+local h6 = host({ cursorPrefab = 1, hudPrefab = 2 })   -- 光标指到"图片"模板上
+H.truthy(GAME.error, '光标模板类型不对时报错')
+H.truthy(tostring(GAME.error):find('不是"光标检测区域"控件') ~= nil, '错误信息说得清：' .. tostring(GAME.error))
+
+local h7 = host({ hudPrefab = 1 })                     -- HUD 指到"图片"模板上
+H.truthy(GAME.error, 'HUD 模板类型不对时报错')
+H.truthy(tostring(GAME.error):find('不是%*%*文本框控件%*%*') ~= nil or tostring(GAME.error):find('文本框') ~= nil,
+  '错误信息说得清：' .. tostring(GAME.error))
+
+-- 假宿主本身也照真机封死：类型专属方法在别的类型上读出来是 nil
+local probe = MOCK.newHost({ w = 900, h = 900 })
+probe.prefabs[1] = 'image'
+probe.prefabs[3] = 'cursorarea'
+MOCK.install(probe)
+local img = game.InstantiateClientUIControl(1, probe.root)
+local cur = game.InstantiateClientUIControl(3, probe.root)
+H.eq(img.AddCursorEventListener, nil, '★ 图片控件没有 AddCursorEventListener（真机也没有）')
+H.eq(img.SetImage == nil, false, '图片控件有 SetImage')
+H.eq(cur.SetImage, nil, '★ 光标检测区域没有 SetImage（真机也没有）')
+H.eq(cur.AddCursorEventListener == nil, false, '光标检测区域有 AddCursorEventListener')
+
 H.finish()

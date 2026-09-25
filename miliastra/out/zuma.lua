@@ -3137,27 +3137,35 @@ function G.boot()
   root:SetActive(true)
   say('挂载点 = %s', tostring(root))
 
-  -- ★ 先把模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）
-  local auto = {}
-  if param('autoPrefabs', 1) ~= 0 then
-    auto = detectPrefabs(root)
+  -- ★ 模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）
+  local useAuto = param('autoPrefabs', 1) ~= 0
+  local auto = useAuto and detectPrefabs(root) or {}
+  if useAuto then
     say('自动认模板：球=%s 文本=%s 光标=%s 容器=%s', tostring(auto.ballPrefab), tostring(auto.hudPrefab),
       tostring(auto.cursorPrefab), tostring(auto.playPrefab))
   end
   G.prefabs = {
     ball = param('ballPrefab', auto.ballPrefab or 1),
     hud = param('hudPrefab', auto.hudPrefab or 2),
-    cursor = param('cursorPrefab', auto.cursorPrefab or 3),
-    play = param('playPrefab', auto.playPrefab or auto.ballPrefab or 1),
+    -- 光标必须真的有（类型不对就没有点击事件）；容器没有就用画布默认容器节点
+    -- 关掉自动认时，按手册建议的顺序建的话模板③就是光标检测区域 → 兜底成 3
+    cursor = param('cursorPrefab', auto.cursorPrefab or (not useAuto and 3 or nil)),
+    play = param('playPrefab', auto.playPrefab),
   }
   G.prefabs.shot = param('shotPrefab', G.prefabs.ball)
-  say('用这套模板索引：球=%d 弹药=%d 文本=%d 光标=%d 玩区=%d', G.prefabs.ball, G.prefabs.shot,
-    G.prefabs.hud, G.prefabs.cursor, G.prefabs.play)
+  say('用这套模板索引：球=%d 弹药=%d 文本=%d 光标=%s 玩区=%s', G.prefabs.ball, G.prefabs.shot,
+    G.prefabs.hud, tostring(G.prefabs.cursor), tostring(G.prefabs.play))
 
   -- ★★ 诊断框**第一个建**：万一后面哪一步炸了，屏幕上还有地方显示原因。
   --   （这一条很关键：我在手机上看不到你的屏幕，那行字就是唯一的线索）
   local dok, dc = pcall(game.InstantiateClientUIControl, G.prefabs.hud, root)
   if dok and dc then
+    -- 文本框类型要是不对（比如拿图片模板当 HUD），真机上写 .text / .fontSize 会直接报"字段不存在"
+    local ht = typeof and typeof(dc) or nil
+    if type(ht) == 'string' and not ht:find('TextBox', 1, true) then
+      error('模板 ' .. tostring(G.prefabs.hud) .. ' 是 ' .. ht .. '，不是**文本框控件** —— ' ..
+        '分数/提示/球面字母都靠它，请到 界面控件组库 → 客户端控件模板 里建一个文本框并存为模板')
+    end
     G.diagControl = dc
     dc:SetActive(true)
     dc:SetAnchoredPosition(0, -h / 2 + 20)
@@ -3171,21 +3179,45 @@ function G.boot()
 
   say('诊断框 = %s', tostring(G.diagControl))
 
-  -- 玩区容器：占满画布、居中
-  G.area = game.InstantiateClientUIControl(G.prefabs.play, root)
-  if not G.area then
-    error('创建玩区容器失败：模板索引 = ' .. tostring(G.prefabs.play)
-      .. '（容器节点控件的模板索引；不想填就把它建成容器模板，脚本会自己认）')
+  -- 玩区容器：**有就用，没有就直接挂在画布自带的默认容器节点下**（省掉模板④）。
+  -- ★ 为什么这样设计：千星奇域里有两个名字很像的"容器"——
+  --   ① 客户端控件容器 = 画布本身（服务器控件，必须有，客户端控件靠它显示、脚本靠它挂）
+  --   ② 容器节点控件   = 普通控件模板（ClientUIContainerControl），只是我们拿来当"玩区父节点"
+  --   ② 完全可以省掉：画布的默认容器节点（game.GetClientUIRoots 返回的那个）就能当父节点。
+  local playPrefab = param('playPrefab', auto.playPrefab)
+  if playPrefab then
+    G.area = game.InstantiateClientUIControl(playPrefab, root)
+    if not G.area then
+      error('创建玩区容器失败：模板索引 = ' .. tostring(playPrefab) .. '（可以不填 —— 留空就用画布默认容器）')
+    end
+    G.area:SetActive(true)
+    G.area:SetAnchoredPosition(0, 0)
+    G.area:SetSizeDelta(w, h)
+    -- 如果用户拿图片模板当玩区（省一个模板），它默认是块白图，会把整屏糊住 → 调成全透明
+    local at = typeof and typeof(G.area) or nil
+    if type(at) == 'string' and not at:find('Container', 1, true) then
+      pcall(function() G.area.imageColor = Color.FromRGBA(0, 0, 0, 0) end)
+      say('玩区容器用的是 %s（不是容器节点控件）→ 已调成全透明，免得糊住屏幕', tostring(at))
+    end
+  else
+    G.area = root
+    say('没建容器节点模板 → 直接用画布的默认容器节点当玩区（少建一个模板）')
   end
-  G.area:SetActive(true)
-  G.area:SetAnchoredPosition(0, 0)
-  G.area:SetSizeDelta(w, h)
 
-  -- 光标检测区域：铺满画布
-  G.cursorArea = game.InstantiateClientUIControl(G.prefabs.cursor, G.area)
+  -- 光标检测区域：**必须是"光标检测区域"控件**（类型不对则根本没有 AddCursorEventListener，
+  -- 真机上会以"调用 nil"崩掉，而假宿主什么方法都有、本地发现不了 → 这里用 typeof 当场拦下）
+  local cursorPrefab = param('cursorPrefab', auto.cursorPrefab)
+  if not cursorPrefab then
+    error('没找到"光标检测区域"控件模板：请到 界面控件组库 → 客户端控件模板 → 添加客户端控件 → 选"光标检测区域" → 存为模板')
+  end
+  G.cursorArea = game.InstantiateClientUIControl(cursorPrefab, G.area)
   if not G.cursorArea then
-    error('创建光标检测区域失败：模板索引 = ' .. tostring(G.prefabs.cursor)
-      .. '（要建一个"光标检测区域"控件并存为模板）')
+    error('创建光标检测区域失败：模板索引 = ' .. tostring(cursorPrefab) .. '（要建一个"光标检测区域"控件并存为模板）')
+  end
+  local ct = typeof and typeof(G.cursorArea) or nil
+  if type(ct) == 'string' and not ct:find('Cursor', 1, true) then
+    error('模板 ' .. tostring(cursorPrefab) .. ' 是 ' .. ct .. '，不是"光标检测区域"控件 —— ' ..
+      '类型不对就没有点击事件，必须建一个光标检测区域并存为模板')
   end
   G.cursorArea:SetActive(true)
   G.cursorArea:SetAnchoredPosition(0, 0)

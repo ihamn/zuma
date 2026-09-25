@@ -341,6 +341,26 @@ local function typeofOf(v)
   return type(v)
 end
 
+-- ★★ 类型专属方法：真机上"当前类型没有的方法"读出来就是 nil（调用即崩）。
+--   原来假宿主的 METHODS 是**所有控件共用**的 —— 于是"拿图片模板当光标检测区域"这种错
+--   在本地一路绿灯，到真机才炸在 AddCursorEventListener 上。这里照真机按类型放开。
+--   （不在下表里的方法 = 所有类型都有）
+local METHOD_KINDS = {
+  AddCursorEventListener = { cursorarea = true, cursor = true, button = true },
+  RemoveCursorEventListener = { cursorarea = true, cursor = true, button = true },
+  RemoveCursorEventListeners = { cursorarea = true, cursor = true, button = true },
+  RemoveAllCursorEventListeners = { cursorarea = true, cursor = true, button = true },
+  SimulateCursorClick = { cursorarea = true, cursor = true, button = true },
+  SetImage = { image = true },
+  SetSoftEdgeWidth = { image = true },
+  SetFillUnused = { image = true },
+  SetFillHorizontal = { image = true },
+  SetFillVertical = { image = true },
+  SetFillRadial90 = { image = true },
+  SetFillRadial180 = { image = true },
+  SetFillRadial360 = { image = true },
+}
+
 local CONTROL_MT = {}
 
 -- 只读字段 -> 内部存储名（存在内部名下，写同名字段才会撞上 __newindex）
@@ -364,7 +384,12 @@ CONTROL_MT.__index = function(t, k)
   local s = setsFor(t.__kind)
   if s.ro[k] or s.rw[k] then return rawget(t, k) end
   local m = METHODS[k]
-  if m then return m end
+  if m then
+    -- 类型专属方法要按类型放开：不是这个类型就没有这个方法（真机读出来是 nil）
+    local kinds = METHOD_KINDS[k]
+    if kinds and not kinds[t.__kind] then return nil end
+    return m
+  end
   return nil            -- ★ 真机：不在白名单里的字段**读为 nil**（不是报错）
 end
 
