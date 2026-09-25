@@ -578,7 +578,7 @@ function G.boot()
   --   菜单态里 tick 不推进盘面，所以它是静止的。
   --   levelIndex 那个脚本变量仍然有效：想**跳过菜单**直接进某一关，就填 levelIndex=8（配 skipMenu=1）。
   G.menuItems = MENU.items(LEVELS_DATA.LEVELS, LEVELS_DATA.TUTORIAL_COUNT or 0)
-  G.screen = (param('skipMenu', 0) == 1) and ((param('egg',0)==1) and 'egg' or 'playing') or ((param('egg',0)==1) and 'egg' or 'menu')
+  G.screen = (param('skipMenu', 0) == 1) and ((param('egg',0)==1) and ((param('eggUnlocked',0)==1) and 'egg' or 'lock') or 'playing') or ((param('egg',0)==1) and ((param('eggUnlocked',0)==1) and 'egg' or 'lock') or 'menu')
   say('开始菜单：%d 个条目（新手关 %d + 核心关 %d）；当前屏幕=%s（skipMenu=1 可跳过菜单）',
     #G.menuItems, tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0,
     #G.menuItems - (tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0), tostring(G.screen))
@@ -728,7 +728,15 @@ function G.tick(dt)
         local ex, ey = G.view.w - 130 * s, G.view.h - 62 * s
         if math.abs(mx - ex) <= 104 * s and math.abs(my - ey) <= 33 * s then
           G.egg = G.egg or require('egg').new(G.levelIndex * 7919 + 13)
-          G.screen = 'egg'
+          -- ★ 门禁谜题（docs/08）：没解锁过就先过密码锁；解锁过就直接进
+          if G.eggUnlocked then
+            G.screen = 'egg'
+          else
+            G.lockInput = G.lockInput or ''
+            G.lockTries = G.lockTries or 0
+            G.lockRed = false
+            G.screen = 'lock'
+          end
           UI.sync(G.ui, G.sc, G.syncState(dt))
           return
         end
@@ -737,6 +745,50 @@ function G.tick(dt)
         if item then
           G.startLevel(item.index + 1)        -- 本体 0 基 / 移植侧 1 基
           return
+        end
+      end
+    end
+    UI.sync(G.ui, G.sc, G.syncState(dt))
+    return
+  end
+
+  -- ★★ 门禁屏（谜题锁，docs/08）：只接受 12 键，不推进任何东西
+  if G.screen == 'lock' then
+    local EGG = require('egg')
+    if (G.input.pending or 0) > 0 then
+      local mx, my = G.input.clickX, G.input.clickY
+      INPUT.consume(G.input)
+      if mx then
+        local s = G.sc.metrics.scale
+        local bw, bh = 150 * s, 60 * s
+        local hit = 0
+        for i = 1, 12 do
+          local col = (i - 1) % 3
+          local row = math.floor((i - 1) / 3)
+          local bx = G.view.w * 0.5 + (col - 1) * (bw + 24 * s)
+          local by = G.view.h * 0.60 + row * (bh + 16 * s)
+          if math.abs(mx - bx) <= bw * 0.5 and math.abs(my - by) <= bh * 0.5 then hit = i end
+        end
+        local keys = { '1','2','3','4','5','6','7','8','9','clear','0','ok' }
+        local k = keys[hit]
+        if k == 'clear' then
+          G.lockInput = ''
+          G.lockRed = false
+        elseif k == 'ok' or (k and k ~= 'clear') then
+          if k ~= 'ok' then
+            if #G.lockInput < 6 then G.lockInput = G.lockInput .. k end
+            if #G.lockInput == 6 then k = 'ok' end   -- 输满 6 位自动验
+          end
+          if k == 'ok' then
+            if tonumber(G.lockInput) == EGG.LOCK_CODE then
+              G.eggUnlocked = true
+              G.screen = 'egg'
+            else
+              G.lockTries = (G.lockTries or 0) + 1
+              G.lockRed = true
+              G.lockInput = ''
+            end
+          end
         end
       end
     end
@@ -915,7 +967,8 @@ function G.syncState(dt)
     mate = G.mateText and G.mateText() or nil,
     -- ★ 菜单：UI 层要知道"现在是不是菜单态"，以及按钮画在哪（布局在 menu.lua 里算，进对拍）
     screen = G.screen,
-    egg = G.egg,                        -- ★ 彩蛋「璃月黄金交易所」的状态（ui.syncEgg 读它）
+    egg = G.egg,
+    lock = { input = G.lockInput, tries = G.lockTries, red = G.lockRed },   -- ★ 门禁状态（ui.syncLock 读它）                        -- ★ 彩蛋「璃月黄金交易所」的状态（ui.syncEgg 读它）
     -- ★ 优化（2026-09-25）：菜单布局**只在菜单态才算**，而且算一次就缓存 ——
     --   原来每帧都调 MENU.layout（一次分配十几张表），真机 Lua 的 GC 会因此抖动；
     --   而菜单是**静止**的（菜单态不推进盘面），画布/条目不变就没必要重算。

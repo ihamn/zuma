@@ -784,6 +784,98 @@ local function syncEgg(ui, sc, st)
   e.ready = true
 end
 
+-- ==================== 彩蛋门禁（谜题锁） ====================
+-- 谜面不给数字：要被玩家**自己去原奇域翻排行榜**（docs/08）。
+-- 键盘复用菜单那 12 个按钮池（门禁屏菜单不可见 ⇒ 零新控件），谜面/输入复用本图层 5 行。
+local LOCK_KEYS = { '1', '2', '3', '4', '5', '6', '7', '8', '9', '清除', '0', '确认' }
+local LOCK_RIDDLE = {
+  '十人坠崖，皆是赌徒。',
+  '榜不在我，榜在人间。',      -- ⇒ 去原奇域《璃月黄金交易所》翻它的排行榜
+  '合而为一，去其零头。',      -- ⇒ 十个数相加、四舍五入取整（先合后取零）
+  '无正无负，方入此门。',      -- ⇒ 不要负号
+}
+local function syncLock(ui, sc, st)
+  local e = ui.egg
+  if not e then return end
+  local inLock = (st.screen == 'lock')
+  local cx, cy = sc.view.cx, sc.view.cy
+  local W, H, s = sc.view.w, sc.view.h, sc.metrics.scale
+
+  setVisible(ui, e.scrim, inLock)
+  setVisible(ui, e.title, inLock)
+  for i = 1, #e.lines do setVisible(ui, e.lines[i], inLock) end
+  if not inLock then return end
+
+  -- 局内 HUD 全藏（和交易所屏同理）
+  for i = 1, #ui.hudOrder do setVisible(ui, ui.hud[ui.hudOrder[i]], false) end
+  if ui.menu and ui.menu.playBtn then setVisible(ui, ui.menu.playBtn, false) end
+  if ui.menu and ui.menu.playLabel then setVisible(ui, ui.menu.playLabel, false) end
+
+  place(ui, e.scrim, cx, cy, W * 0.5, H * 0.5, W, H, 0)
+  place(ui, e.title, cx, cy, W * 0.5, H * 0.12, math.min(W - 80, 760 * s), 64 * s, 0)
+  e.title.text = '璃月黄金交易所 · 门禁'
+  e.title.fontSize = math.max(18, math.floor(30 * s))
+  e.title.fontColor = hexColor('#e6d3a3')
+
+  local lk = st.lock or {}
+  local tries = lk.tries or 0
+  local red = lk.red == true
+  for i = 1, 4 do
+    local c = e.lines[i]
+    place(ui, c, cx, cy, W * 0.5, H * 0.22 + (i - 1) * 44 * s, math.min(W - 120, 900 * s), 40 * s, 0)
+    -- 连错 3 次 ⇒ 保底：谜面换成"十行数字"（一行两人），玩家照样能自己算
+    if tries >= 3 and i <= 3 then
+      local P = {
+        { 'CocaKlee -136692.77', '有可言遇 -114347.34' },
+        { '晓月之星 -111297.93', '屑旅行人 -92331.79' },
+        { '✧白星簌雪✧ -56715.82', '欧若洛樱 -33180.86' },
+      }
+      c.text = P[i][1] .. '    ' .. P[i][2]
+      c.fontColor = hexColor('#a9b6c8')
+    else
+      c.text = LOCK_RIDDLE[i]
+      c.fontColor = hexColor(i == 2 and '#f0dfae' or '#dce6ff')
+    end
+    c.fontSize = math.max(12, math.floor(18 * s))
+  end
+  if tries >= 3 then
+    e.lines[4].text = '哈基喵 -22676.93   诸葛茗云 -16977.06'
+    e.lines[5]  = e.lines[5] or e.lines[4]
+  end
+  -- 输入行（第 5 行）：○ 表示已输入的位数
+  local inp = tostring(lk.input or '')
+  e.lines[5].text = '输入： ' .. (inp == '' and '—' or inp) .. '        （输满 6 位自动验）'
+  place(ui, e.lines[5], cx, cy, W * 0.5, H * 0.22 + 4 * 44 * s, math.min(W - 120, 900 * s), 40 * s, 0)
+  e.lines[5].fontSize = math.max(13, math.floor(20 * s))
+  e.lines[5].fontColor = hexColor(red and '#ff6b6b' or '#8fe3b0')
+  -- 第 4 行在保底模式下补上后两人（上面被 riddle 占了）
+  if tries >= 3 then
+    e.lines[4].text = '哈基喵 -22676.93   诸葛茗云 -16977.06   天使的糖豆 -2981.4   凝銘 -12297.19'
+    place(ui, e.lines[4], cx, cy, W * 0.5, H * 0.22 + 3 * 44 * s, math.min(W - 120, 1100 * s), 40 * s, 0)
+    e.lines[4].fontColor = hexColor('#a9b6c8')
+  end
+
+  -- 12 键：4 行 3 列（复用菜单池 + 提到最上层，否则被暗幕压住）
+  local bw, bh = 150 * s, 60 * s
+  for i = 1, 12 do
+    local col = (i - 1) % 3
+    local row = math.floor((i - 1) / 3)
+    local x = W * 0.5 + (col - 1) * (bw + 24 * s)
+    local y = H * 0.60 + row * (bh + 16 * s)
+    place(ui, e.btn[i], cx, cy, x, y, bw, bh, 0)
+    setColor(ui, e.btn[i], (i == 12) and '#2f4a35' or ((i == 10) and '#4a2f2f' or '#333a48'))
+    place(ui, e.btnLabel[i], cx, cy, x, y, bw, 42 * s, 0)
+    e.btnLabel[i].text = LOCK_KEYS[i]
+    e.btnLabel[i].fontSize = math.max(13, math.floor(19 * s))
+    e.btnLabel[i].fontColor = hexColor('#e8f0ff')
+    setVisible(ui, e.btn[i], true)
+    setVisible(ui, e.btnLabel[i], true)
+    if e.btn[i].SetAsLastSibling then pcall(e.btn[i].SetAsLastSibling, e.btn[i]) end
+    if e.btnLabel[i].SetAsLastSibling then pcall(e.btnLabel[i].SetAsLastSibling, e.btnLabel[i]) end
+  end
+  -- 多余的按钮（池子 12 个，正好够）
+end
+
 -- ==================== 每帧同步 ====================
 
 -- st（可选）: { dt, events, hintLines = {..}, mode = 'match'|'insert' }
@@ -1187,6 +1279,7 @@ function M.sync(ui, sc, st)
   -- ---- 开始菜单（§61）：局内只画左下角那个"回菜单"按钮；菜单态画整屏 ----
   syncMenu(ui, sc, st)
   syncEgg(ui, sc, st)
+  syncLock(ui, sc, st)      -- ★ 门禁：调用必须在 syncEgg **之后**（它会覆盖标题/行/按钮）
   return ui
 end
 

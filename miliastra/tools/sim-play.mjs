@@ -91,6 +91,7 @@ const mounted = rt.mountScript({
     ...(function () { const s = flag('skipMenu', ''); return s ? { skipMenu: Number(s) } : {}; })(),
     // --egg=1：直接进彩蛋屏「璃月黄金交易所」（出图用）
     ...(function () { const s = flag('egg', ''); return s ? { egg: Number(s) } : {}; })(),
+    ...(function () { const s = flag('eggUnlocked', ''); return s ? { eggUnlocked: Number(s) } : {}; })(),
   },
 })
 
