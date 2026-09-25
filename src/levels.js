@@ -258,4 +258,24 @@ export const TUTORIALS = [
 // ⚠ 不把新手关塞进 LEVELS 本身 —— 测试与探针大量拿 LEVELS[0] 当夹具，
 //   混进去会把几十条断言的含义悄悄改掉（这类"改测试含义"的坑本轮已经踩过）。
 //   ★ 2026-09-25：LEVELS 删掉了 spiral-outer，所以 LEVELS[0] 现在是 spiral-inner。
-export const ALL_LEVELS = TUTORIALS.concat(LEVELS);
+// ==================== 经典祖玛关卡（DESIGN.md §66）====================
+// ★★ 故意**不放进 LEVELS**：LEVELS 是"RNA 核心关"，本体测试大量依赖它的内容与顺序。
+//   经典关单独一个数组，最后由 ALL_LEVELS 拼到菜单**最后**（菜单第三组）。
+//   rules = 'classic' ⇒ 场景层走"同色连续 ≥3 消"，无配对/无错配/无爆炸。
+export const CLASSIC_LEVELS = [
+  {
+    id: 'classic-spiral',
+    name: '经典 · 螺旋',
+    short: '经典螺旋',
+    group: '经典祖玛',          // 菜单分组名（main.js 的 menuItems 读它）
+    rules: 'classic',           // ★ 经典规则
+    makeSpine: spiralSpine,
+    railOrder: 'spawn-outer',
+    layers: null,
+    // 经典玩法是"打进去凑同色"，铺得比 RNA 关多一些、预算给大一点
+    prefill: 18,
+    ballBudget: 40,
+    scoreTarget: Infinity,
+  },
+];
+export const ALL_LEVELS = TUTORIALS.concat(LEVELS).concat(CLASSIC_LEVELS);

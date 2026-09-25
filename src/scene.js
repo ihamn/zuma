@@ -1,11 +1,11 @@
 // 场景装配 + 每帧推进。main.js 与 tools/preview.mjs / 单测共用同一份逻辑（单一真源）。
 // 组合：几何(U2) + 珠串(U3) + 核糖体(U6) + 弹丸与命中分流(U7/U8) + 阅读框(U9) + 生命与计分(U11)
 
-import { DESIGN, metrics, BASES, COMPLEMENT, isComplement, complementColor, WRONG_GLOW } from './config.js';
+import { DESIGN, metrics, BASES, COMPLEMENT, isComplement, complementColor, WRONG_GLOW, colorOf, inkOf } from './config.js';
 import { buildPath, assignLayers, layerRuns, buildRail, validateTrack } from './geometry.js';
 import { makeRng } from './rng.js';
 import { makeChain, advanceChain, spawnBall, prefillChain, removeRange, insertBall, touchDist, applyBackward, hasBackward } from './chain.js';
-import { computeRuns, clearableRuns, findExplosion, markFinal } from './run.js';
+import { computeRuns, clearableRuns, findExplosion, markFinal, classicRuns, classicClearable } from './run.js';
 import { makeRibosome, tickRibosome, fire, drawBase } from './ribosome.js';
 import { makeProjectile, advanceProjectile, sweepHit, projectileExpired } from './projectile.js';
 import { ELEMENTS, QUICK, reactionFor, sevenReaction, beadElemsFor, elemColor, elemGlyph, ELEM, SHATTER } from './elements.js';
@@ -146,6 +146,9 @@ export function assembleScene(level, view, seed) {
     reactionFlash: 0,               // 反应横幅剩余秒数（纯渲染）
     stopAdding: level.stopAdding === true,
     mode: DESIGN.defaultMode,        // 'match' 或 'insert'
+    // ★ 经典祖玛（DESIGN.md §66）：rules === 'classic' 时走"同色连续 ≥3 消"的规则，
+    //   和 RNA 配对玩法**完全分开**；缺省 'rna' ⇒ 现有 10 关行为一个字不变。
+    rules: level.rules || 'rna',
     modeFlash: 0,                    // 按模式按钮后的高亮剩余时间
     lives: DESIGN.startLives, score: 0, losing: false, gameOver: false, won: false,
     runsInfo: [], lastClear: null,
@@ -259,6 +262,13 @@ export function syncBeads(sc) {
       b.ink = ELEM[b.elem] ? ELEM[b.elem].ink : '#101820';
       b.label = elemGlyph(b.elem);
       b.pairGlow = b.paired ? (b.wrongMark ? WRONG_GLOW : elemColor(b.pairBase)) : null;
+    } else if (sc.rules === 'classic') {
+      // ★★ 经典祖玛（§66）：**用经典专用配色**（用户："原版球的颜色不要沿用，重新搞"）；
+      //   球面**不显示字母**（原版是纯色球）。其它一切照旧 —— 所以这里只改这两样。
+      b.col = colorOf(b.base, 'classic');
+      b.ink = inkOf(b.base, 'classic');
+      b.label = '';
+      b.pairGlow = null;                 // 经典玩法没有配对，也就不该有"该发什么色"的描边
     } else {
       b.col = null; b.ink = null; b.label = b.base;
       b.pairGlow = b.paired ? (b.wrongMark ? WRONG_GLOW : complementColor(b.base)) : null;
@@ -304,6 +314,17 @@ function resolveHit(sc, p, hit) {
     const r = sevenHit(sc, hit.index, p.base);
     ev.type = r ? 'pair' : 'mismatch';
     if (r) { ev.reaction = r.name; ev.mult = r.mult; }
+    pushEvent(sc, ev);
+    return ev;
+  }
+  // ★★ 经典祖玛（DESIGN.md §66）：射出的球**无条件插进链子**（原版行为），
+  //   没有配对、没有错配、没有爆炸；随后的消除由 clearImmediately 按"同色连续 ≥3"判定
+  //   （连锁由那个循环自动产生，回退由 pushBack 统一施加）。
+  if (sc.rules === 'classic') {
+    ev.type = 'insert';
+    const mgc = startMerge(sc, ball, p.base, hit.x, hit.y);
+    mgc.elem = p.elem || null;
+    ev.willMerge = true;
     pushEvent(sc, ev);
     return ev;
   }
@@ -521,14 +542,19 @@ function settle(sc) {
   //   而这一关根本没教过爆炸是什么。
   if (!sc.noClear) {
     for (let guard = 0; guard < 128; guard++) {
-      const ei = findExplosion(sc.chain);
-      if (ei >= 0) { total += explodeAt(sc, ei); continue; }
+      // ★ 经典祖玛（§66）：**没有"错配"这回事**（打错只是插进去）→ 不做爆炸判定。
+      //   即使不做这层护栏也不会误炸（经典模式没有任何球会被标成 wrongMark），
+      //   但写出来是为了让"经典不做爆炸"这条规则在代码里看得见。
+      if (sc.rules !== 'classic') {
+        const ei = findExplosion(sc.chain);
+        if (ei >= 0) { total += explodeAt(sc, ei); continue; }
+      }
       const cleared = clearImmediately(sc);
       if (!cleared) break;
       total += cleared;
     }
   }
-  sc.runsInfo = computeRuns(sc.chain);
+  refreshRuns(sc);
   // ★ 过关条件二：**场上清空**（DESIGN.md §52）。
   //   正常玩法里链子会立刻从出球口补上，所以"空"只可能来自"你把整场清光了"
   //   —— 比如场上只剩 3 颗 mark=2，一次爆炸全带走。这种时候必须结束，不能干等着。
@@ -565,11 +591,21 @@ function settle(sc) {
 
 // U9：立即消除 + 级联到不动点。
 // 从后往前删，避免下标位移；删完重算 run（空隙 λ=0 会自然阻断级联，等回缩闭合后下一帧继续）。
+// ★ 经典祖玛（§66）：规则函数按 ruleset 选 ——
+//   RNA 用"已配对标记 + 长度是 3 的倍数"，经典用"同色 + 长度 ≥3"。
+function clearableFor(sc) {
+  return (sc.rules === 'classic') ? classicClearable(sc.chain) : clearableRuns(sc.chain);
+}
+// 给渲染/HUD 用的分段读数（两套规则的"段"含义不同，要各用各的）
+function refreshRuns(sc) {
+  sc.runsInfo = (sc.rules === 'classic') ? classicRuns(sc.chain) : computeRuns(sc.chain);
+}
+
 function clearImmediately(sc) {
   let total = 0;
   let minPos = -1;          // 这一帧里"洞端那侧最小的一段"的位置（决定后退标记打在哪）
   for (let guard = 0; guard < 64; guard++) {
-    const hits = clearableRuns(sc.chain);
+    const hits = clearableFor(sc);
     if (!hits.length) break;
     for (let i = hits.length - 1; i >= 0; i--) {
       const run = hits[i];
@@ -581,7 +617,7 @@ function clearImmediately(sc) {
   }
   if (total) {
     pushBack(sc, total, minPos);   // ★ 整帧只结算一次（见 pushBack 注释）
-    sc.runsInfo = computeRuns(sc.chain);
+    refreshRuns(sc);
   }
   return total;
 }
@@ -608,7 +644,7 @@ function eliminateRun(sc, run) {
   // 先被标记的那颗球可能被后一次消除连带删掉（实测过：级联时标记直接消失）。
   // 统一由 clearImmediately 在整帧结算完后施加一次。
 
-  sc.runsInfo = computeRuns(sc.chain);
+  refreshRuns(sc);
   return removed;
 }
 

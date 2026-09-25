@@ -169,7 +169,9 @@ function drawBeadLayer(ctx, G, z) {
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       if (b.z !== z) continue;
-      drawBead(ctx, b.x, b.y, b.r, b.label || b.base, b.paired === true,
+      // ★ 经典祖玛（§66）：原版是纯色球、没有字母 → label 传空
+      const lab = (G.rules === 'classic') ? '' : (b.label || b.base);
+      drawBead(ctx, b.x, b.y, b.r, lab, b.paired === true,
         b.wrong ? WRONG_COLOR : (b.col || null), b.wrong ? WRONG_INK : (b.ink || null),
         b.pairGlow, b.frozen);
     }

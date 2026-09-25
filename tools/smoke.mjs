@@ -78,12 +78,14 @@ if (!Z) process.exit(1);
 //   都会静默失败（而且看起来像是物理坏了）。
 group('★ 开始菜单（§61）');
 check('★ 开局在菜单，不是直接进游戏', Z.screen === 'menu', 'screen=' + Z.screen);
-check('★ 菜单条目 = 全部关卡（7 新手 + 正式关）', (Z.menuItems || []).length === Z.levelCount,
+check('★ 菜单条目 = 全部关卡（7 新手 + 核心关 + 经典祖玛）', (Z.menuItems || []).length === Z.levelCount,
   '条目=' + (Z.menuItems || []).length);
-check('★ 菜单条目分了两组', (function () {
+check('★ 菜单条目分了三组（新手关 7 / 核心关 3 / 经典祖玛 1）', (function () {
   const g = {};
   (Z.menuItems || []).forEach(function (it) { g[it.group] = (g[it.group] || 0) + 1; });
-  return g['新手关'] === 7 && g['核心关'] === Z.levelCount - 7;   // 2026-09-25 删了 spiral-outer：核心关 4 → 3
+  // 2026-09-25：DESIGN §66 新增第三组「经典祖玛」。这里**按组名写死数量**，
+  // 不按下标算 —— 按 `levelCount - 7` 那种写法一加组就错。
+  return g['新手关'] === 7 && g['核心关'] === 3 && g['经典祖玛'] === 1;
 })(), (Z.menuItems || []).map(function (i) { return i.group; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('/'));
 const _headMenu = Z.state.sc.chain.balls[0].wp;
 pump(90);
@@ -193,8 +195,10 @@ check('三消道小球数 == 已占用的球数（正确 + 错误配对）',
   ' （配对 ' + st.pairs + ' + 错配 ' + st.mismatches + '）');
 
 // ⚠ 别写死 2：§60 把 8 个新手关加到了前面，交叉关的位置整体后移了。
-//   按"核心关里的第 3 个"算更稳（核心关永远排在最后）。
-Z.setLevel(Z.levelCount - 2);
+// ★★ 2026-09-25 又踩一次同类坑：加了「经典祖玛」第三组之后，`levelCount - 2` 指向的是
+//   **无尽**而不是交叉桥，这条断言当场红（"桥=0"）。**别按数字下标取关卡，按名字/id 取。**
+const CROSS = (Z.menuItems || []).findIndex(function (it) { return it.label.indexOf('交叉') >= 0; });
+Z.setLevel(CROSS >= 0 ? CROSS : 0);
 pump(10);
 const bridges = Z.state.issues.filter(function (x) { return x.code === 'BRIDGE'; });
 check('交叉关存在跨层桥（遮挡系统有戏可演）', bridges.length >= 1,

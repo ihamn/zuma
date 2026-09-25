@@ -261,3 +261,27 @@ export function isComplement(tRNA, mRNA) {
   const c = COMPLEMENT[mRNA];
   return !!c && c.indexOf(tRNA) >= 0;
 }
+
+// ==================== 经典祖玛专用配色（DESIGN.md §66.6）====================
+// 用户要求："原版球的颜色不要沿用，重新搞"。
+// ★ 内部 token 仍是 A/U/C/G/T（规则/对拍/控件池一律不动），只换**显示颜色**。
+export const CLASSIC_COLOR = {
+  A: '#e8453c',   // 红
+  U: '#f2c53d',   // 黄
+  G: '#3b7ddd',   // 蓝
+  C: '#3fbf6f',   // 绿
+  T: '#9a5bd6'    // 紫
+};
+export const CLASSIC_INK = {
+  A: '#2a0705', U: '#2b2205', G: '#04122b', C: '#052a12', T: '#1b0733'
+};
+
+// 按 ruleset 取色：'classic' 用经典那套，其它（含默认）用 RNA 碱基色
+export function colorOf(base, rules) {
+  const t = (rules === 'classic') ? CLASSIC_COLOR : BASE_COLOR;
+  return t[base] || '#ffffff';
+}
+export function inkOf(base, rules) {
+  const t = (rules === 'classic') ? CLASSIC_INK : BASE_INK;
+  return t[base] || '#101820';
+}

@@ -36,6 +36,8 @@ function rebuild() {
   const sc = assembleScene(ALL_LEVELS[G.levelIndex], G.view, 20260101 + G.levelIndex * 977);
   G.sc = sc;
   G.level = sc.level;
+  G.rules = sc.rules;        // ★ 经典祖玛（§66）：渲染要按 ruleset 决定配色/字母
+  G.rulesName = sc.rules;
   G.metrics = sc.metrics;
   // ★ 模式是玩家偏好，不是场景状态：rebuild 会新建场景（初始模式是 defaultMode），
   //   这里把玩家选过的模式贴回去。否则 **手机浏览器地址栏收起/展开触发的 resize**
@@ -50,13 +52,13 @@ function rebuild() {
   G.beads = sc.beads;
   G.chainInfo = sceneInfo(sc);          // 菜单态也要有，调试层要用
   // 菜单条目在这里算一次：render 画按钮、onPointerDown 判点击，两边共用同一份
+  // ★ 分组优先读关卡自己的 group（经典祖玛那组就是这么来的）；
+  //   没写的仍按老规矩分：新手关（TUTORIALS）/ 核心关 —— 现有 10 关的显示**一个字不变**。
   G.menuItems = ALL_LEVELS.map(function (l, i) {
     const tut = i < TUTORIALS.length;
-    return {
-      index: i,
-      group: tut ? '新手关' : '核心关',
-      label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name))
-    };
+    const grp = l.group || (tut ? '新手关' : '核心关');
+    const labeled = l.group ? (l.name || l.short) : (tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name)));
+    return { index: i, group: grp, label: labeled };
   });
 }
 

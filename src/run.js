@@ -85,3 +85,28 @@ export function runStatus(run) {
   };
 }
 
+
+// ==================== 经典祖玛（DESIGN.md §66）====================
+// ★★ 纯追加：上面的 computeRuns / clearableRuns（RNA 配对玩法用的）**一个字都没动**。
+// 规则差异：RNA 是"已配对标记的球、连续段长度是 3 的倍数"；经典是"**同色**连续段 ≥ 3"。
+export function classicRuns(chain) {
+  const balls = chain.balls;
+  const runs = [];
+  let cur = null;
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (cur === null || cur.base !== b.base) {
+      cur = { i0: i, i1: i, len: 1, base: b.base, key: b.id };
+      runs.push(cur);
+    } else {
+      cur.i1 = i;
+      cur.len += 1;
+    }
+  }
+  return runs;
+}
+
+// 该消的段：同色且长度 ≥ 3（经典祖玛就是这一条；连锁由场景层的循环自动产生）
+export function classicClearable(chain) {
+  return classicRuns(chain).filter(function (r) { return r.len >= 3; });
+}

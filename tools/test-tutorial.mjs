@@ -8,7 +8,7 @@
 // 这些是"课"本身，不是装饰 —— 摆错了这一关就白设计了。
 
 import { metrics, viewFor, BASES, DESIGN, menuLayout } from '../src/config.js';
-import { TUTORIALS, ALL_LEVELS, LEVELS } from '../src/levels.js';
+import { TUTORIALS, ALL_LEVELS, LEVELS, CLASSIC_LEVELS } from '../src/levels.js';
 import { assembleScene, advanceScene, sceneInfo, drainEvents, parseScript, parseScriptEntry,
          allowedComplements, syncBeads } from '../src/scene.js';
 import { markFinal, computeRuns, runStatus } from '../src/run.js';
@@ -32,10 +32,13 @@ function hintLines(l) { return Object.prototype.toString.call(l.hint) === '[obje
 group('一、七关的配方都完整（缺字段的关卡会安静地退化成普通关）');
 check('一共 7 关（①③ 已合并：反色 + 五色球本来就是同一课）',
   TUTORIALS.length === 7, 'TUTORIALS=' + TUTORIALS.length);
-check('全部关卡表 = 新手关 + 正式关', ALL_LEVELS.length === TUTORIALS.length + LEVELS.length,
-  ALL_LEVELS.length + ' = ' + TUTORIALS.length + ' + ' + LEVELS.length);
-check('★ 正式关在 ALL_LEVELS 里排最后（测试/探针依赖 LEVELS[0] 不变）',
-  ALL_LEVELS[ALL_LEVELS.length - 1].id === 'endless');
+check('全部关卡表 = 新手关 + 正式关 + 经典祖玛', ALL_LEVELS.length === TUTORIALS.length + LEVELS.length + CLASSIC_LEVELS.length,
+  ALL_LEVELS.length + ' = ' + TUTORIALS.length + ' + ' + LEVELS.length + ' + ' + CLASSIC_LEVELS.length);
+// ★ 2026-09-25：DESIGN §66 加了「经典祖玛」组，它排在 ALL_LEVELS **最后**（菜单第三组）。
+//   所以"最后一个是 endless"这条不再成立 —— 改成确认"正式关仍然完整、位置没被动的部分打乱"。
+check('★ 正式关 3 个仍排在经典组之前，且 LEVELS[0] 不变（大量测试依赖它）',
+  ALL_LEVELS[ALL_LEVELS.length - 1].rules === 'classic' &&
+  ALL_LEVELS[ALL_LEVELS.length - 1 - CLASSIC_LEVELS.length].id === 'endless');
 check('★ 正式关 3 个；LEVELS[0] = spiral-outer（2026-09-25 删掉 spiral-inner；奇匠定的是出球道在外）',
   LEVELS.length === 3 && LEVELS[0].id === 'spiral-outer' && LEVELS[0].prefill === 14);
 check('每关都有 id / name / short / hint / 球数预算',
