@@ -96,7 +96,9 @@ BOARD.syncBeads(sc)
 UI.sync(ui, sc, GAME.syncState(DT))
 H.eq(ui.halo[2].visible, true, '配对正确的球也有光晕')
 H.eq(ui.halo[1].visible, false, '没读出的球没有光晕')
-H.eq(ui.halo[2].enableSoftEdge, true, '光晕是柔边的（图片控件没有描边，靠柔边做发光）')
+-- ★ 环上**不该**开柔边：柔边是给实心圆盘做发光用的；换成"空心圆"素材后它会把这圈环糊烂
+--   （用户报"有的球描边会突然变坏"）。本体那边 glow 也是硬描边。
+H.eq(ui.halo[2].enableSoftEdge, false, '光晕（细环）不开柔边')
 
 -- ②d 球面字母：本体把 label 画在球上；我们叠文本框
 local b1 = sc.beads.spawn[3]

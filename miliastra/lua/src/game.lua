@@ -523,6 +523,7 @@ function G.boot()
     artBar = artBar,
     artRing = artRing,
     cd = tonumber(tostring(param('cd', ''))) or 0,   -- 开火冷却环（本体没有 → 默认关）
+    glow = tonumber(tostring(param('glow', ''))),    -- 球的描边/光晕总开关（默认开；0 = 全关）
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

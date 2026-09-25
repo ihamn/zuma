@@ -2408,6 +2408,8 @@ function M.create(opts)
   -- 环（洞穴那几圈）专用素材：**空心圆**（实心圆装成环要叠层，效果差）
   ui.artRing = opts.artRing or ui.artAny
   -- 开火冷却环：**本体没有** → 默认关（cd=1 才画）
+  -- 球的描边/光晕总开关（默认开；填 glow=0 全关，保留其他美化）
+  ui.glowOn = (opts.glow == nil) and 1 or opts.glow
   ui.cdOn = opts.cd or 0
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
@@ -2487,7 +2489,10 @@ function M.create(opts)
     ui.haloHalf = n
     for i = 1, 2 * n do
       ui.halo[i] = build(ballPrefab, '光晕控件', i)
-      softEdge(ui.halo[i], true, 80)
+      -- ★★ **环上不开柔边**：柔边（80）是当初给"实心圆盘做发光"调的；
+      --    现在这一圈用的是**空心圆素材**，再叠柔边会把环糊成一团 →
+      --    用户看到的"有的球描边会突然变坏"就是这个。环要清晰（本体也是硬描边）。
+      softEdge(ui.halo[i], false, 0)
     end
   end
 
@@ -2530,7 +2535,7 @@ function M.create(opts)
   softEdge(ui.rb, ui.fancy ~= 0, 45)
   -- 本体给"炮口那颗"画了 glow（drawBead 第 9 个参数 true）→ 白色描边
   ui.loadedHalo = { build(ballPrefab, '待发球描边控件', 1), build(ballPrefab, '待发球描边控件', 2) }
-  for i = 1, 2 do softEdge(ui.loadedHalo[i], true, 60) end
+  for i = 1, 2 do softEdge(ui.loadedHalo[i], false, 0) end   -- 同理：环上不加柔边
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
   -- ★ 待发球也要字母（本体 render.js：`drawBead(..., lb(1), ...)` 和 `lb(0)` —— **两颗都带字**）
@@ -2725,7 +2730,7 @@ function M.sync(ui, sc, st)
 
       -- 光晕：读出/配错才亮（本体 drawBead 的 glow：球外 r+3 处一圈**描边**，不是大圆盘）
       if ui.halo[i] then
-        if ui.fancy ~= 0 and b.pairGlow then
+        if ui.fancy ~= 0 and ui.glowOn ~= 0 and b.pairGlow then
           -- ★ 用**空心圆**素材画成细环（实心圆画 2.1× 会像"球变大了" —— 用户一眼看出不对）
           placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r + V.haloPad, b.pairGlow .. 'e6', ui.artRing)
         else
@@ -2761,7 +2766,7 @@ function M.sync(ui, sc, st)
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
       -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
       local eh = ui.halo and ui.haloHalf and ui.halo[ui.haloHalf + i]
-      if eh and ui.fancy ~= 0 then
+      if eh and ui.fancy ~= 0 and ui.glowOn ~= 0 then
         placeBead(ui, eh, cx, cy, e.x, e.y, e.r + V.haloPad, '#ffffff80', ui.artRing)  -- 本体是 rgba(255,255,255,0.5)
       elseif eh then
         setVisible(ui, eh, false)
@@ -2933,7 +2938,7 @@ function M.sync(ui, sc, st)
     end
     -- ★ 炮口那颗的白色描边（本体那次 drawBead 的 glow 参数是 true）
     local lh = ui.loadedHalo
-    if lh and ui.fancy ~= 0 then
+    if lh and ui.fancy ~= 0 and ui.glowOn ~= 0 then
       placeBead(ui, lh[1], cx, cy, lx1, ly1, bR + V.haloPad, '#ffffff80', ui.artRing)  -- 本体同样 50%
       setVisible(ui, lh[2], false)
     elseif lh then
@@ -3675,6 +3680,7 @@ function G.boot()
     artBar = artBar,
     artRing = artRing,
     cd = tonumber(tostring(param('cd', ''))) or 0,   -- 开火冷却环（本体没有 → 默认关）
+    glow = tonumber(tostring(param('glow', ''))),    -- 球的描边/光晕总开关（默认开；0 = 全关）
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,
