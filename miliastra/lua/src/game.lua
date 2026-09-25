@@ -766,7 +766,7 @@ function G.tick(dt)
         if hit == 1 then EGG.buy(G.egg, 1)
         elseif hit == 2 then EGG.sell(G.egg, 1)
         elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.borrowGold(G.egg)
+        elseif hit == 4 then EGG.short(G.egg)          -- 做空：每回 100g
         elseif hit == 5 then EGG.work(G.egg)
         elseif hit == 6 then G.screen = 'menu' end
       end

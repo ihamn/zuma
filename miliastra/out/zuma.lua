@@ -2934,7 +2934,7 @@ local function syncEgg(ui, sc, st)
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
   -- 六个按钮：两行三列
-  local labels = { '买入 1g', '卖出 1g', '借 1 万', '借 100g', '打 工', '返 回' }
+  local labels = { '买入 1g', '卖出 1g', '借 1 万', '做空 100g', '打 工', '返 回' }
   local bw, bh = 190 * s, 62 * s
   for i = 1, 6 do
     local col = (i - 1) % 3
@@ -4419,7 +4419,7 @@ function G.tick(dt)
         if hit == 1 then EGG.buy(G.egg, 1)
         elseif hit == 2 then EGG.sell(G.egg, 1)
         elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.borrowGold(G.egg)
+        elseif hit == 4 then EGG.short(G.egg)          -- 做空：每回 100g
         elseif hit == 5 then EGG.work(G.egg)
         elseif hit == 6 then G.screen = 'menu' end
       end
@@ -4795,6 +4795,20 @@ function M.borrowGold(st)
   st.debtGold = st.debtGold + M.BORROW_GOLD
   st.cash = st.cash + M.BORROW_GOLD * st.price
   note(st, '借金 ' .. M.BORROW_GOLD .. 'g 套现')
+  return true
+end
+
+-- ★ 做空（奇匠："做空每回100啊！"）：每按一次借入 100g 黄金并立刻按现价卖掉
+--   ⇒ 手上多一笔现金、同时欠 100g 黄金 ⇒ 金价跌了就赚、涨了就亏。
+--   和"借 100g 套现"是同一套账（原玩法里做空就是这么做的），但这里是**独立动作**：
+--   有自己的常量、自己的上限判定、自己的日志。
+M.SHORT_GOLD = 100
+function M.short(st)
+  if not M.canBorrow(st) then return false, '欠款到顶，做不了空' end
+  st.debtGold = st.debtGold + M.SHORT_GOLD
+  st.cash = st.cash + M.SHORT_GOLD * st.price
+  st.traded = st.traded + 1
+  note(st, '做空 ' .. M.SHORT_GOLD .. 'g（欠金 ' .. string.format('%.0f', st.debtGold) .. 'g）')
   return true
 end
 

@@ -188,6 +188,20 @@ function M.borrowGold(st)
   return true
 end
 
+-- ★ 做空（奇匠："做空每回100啊！"）：每按一次借入 100g 黄金并立刻按现价卖掉
+--   ⇒ 手上多一笔现金、同时欠 100g 黄金 ⇒ 金价跌了就赚、涨了就亏。
+--   和"借 100g 套现"是同一套账（原玩法里做空就是这么做的），但这里是**独立动作**：
+--   有自己的常量、自己的上限判定、自己的日志。
+M.SHORT_GOLD = 100
+function M.short(st)
+  if not M.canBorrow(st) then return false, '欠款到顶，做不了空' end
+  st.debtGold = st.debtGold + M.SHORT_GOLD
+  st.cash = st.cash + M.SHORT_GOLD * st.price
+  st.traded = st.traded + 1
+  note(st, '做空 ' .. M.SHORT_GOLD .. 'g（欠金 ' .. string.format('%.0f', st.debtGold) .. 'g）')
+  return true
+end
+
 -- 打工：30 秒、仅欠款时可用
 function M.work(st)
   if M.debtTotal(st) <= 0 then return false, '不欠钱，不用打工' end
