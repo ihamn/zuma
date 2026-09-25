@@ -202,6 +202,24 @@ function M.short(st)
   return true
 end
 
+-- ★ 还金（做空的**平仓**动作）：按现价买回 100g 还掉金欠。
+--   奇匠问："借金和还金中间要分开等波动啊？" —— 对，这就是做空的玩法本体：
+--   借金（做空）时的价格 P1 与还金时的价格 P2 **不一样**才分得出赚赔，
+--   而报价每 5s 才动一次 ⇒ "等波动"是**天然发生**的，不需要额外锁。
+--   （同一档价格里借了立刻还 = 现金原地打转，不赚不赔 ⇒ 玩家自己就不会那么干。）
+M.REPAY_GOLD = 100
+function M.repayGold(st)
+  if (st.debtGold or 0) <= 0 then return false, '没有金欠要还' end
+  local grams = math.min(M.REPAY_GOLD, st.debtGold)
+  local cost = grams * st.price
+  if cost > st.cash then return false, '现金不够还这一笔' end
+  st.cash = st.cash - cost
+  st.debtGold = st.debtGold - grams
+  st.traded = st.traded + 1
+  note(st, '还金 ' .. string.format('%.0f', grams) .. 'g（花 ' .. string.format('%.0f', cost) .. '）')
+  return true
+end
+
 -- 打工：30 秒、仅欠款时可用
 function M.work(st)
   if M.debtTotal(st) <= 0 then return false, '不欠钱，不用打工' end

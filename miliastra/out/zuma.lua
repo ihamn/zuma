@@ -2934,9 +2934,9 @@ local function syncEgg(ui, sc, st)
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
   -- 六个按钮：两行三列
-  local labels = { '买入 1g', '卖出 1g', '借 1 万', '做空 100g', '打 工', '返 回' }
+  local labels = { '买入 1g', '卖出 1g', '借 1 万', '做空 100g', '还金 100g', '打 工', '返 回' }
   local bw, bh = 190 * s, 62 * s
-  for i = 1, 6 do
+  for i = 1, #labels do
     local col = (i - 1) % 3
     local row = math.floor((i - 1) / 3)
     local x = W * 0.5 + (col - 1) * (bw + 26 * s)
@@ -4409,7 +4409,7 @@ function G.tick(dt)
         local s = G.sc.metrics.scale
         local bw, bh = 190 * s, 62 * s
         local hit = 0
-        for i = 1, 6 do
+        for i = 1, 7 do
           local col = (i - 1) % 3
           local row = math.floor((i - 1) / 3)
           local bx = G.view.w * 0.5 + (col - 1) * (bw + 26 * s)
@@ -4419,9 +4419,10 @@ function G.tick(dt)
         if hit == 1 then EGG.buy(G.egg, 1)
         elseif hit == 2 then EGG.sell(G.egg, 1)
         elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.short(G.egg)          -- 做空：每回 100g
-        elseif hit == 5 then EGG.work(G.egg)
-        elseif hit == 6 then G.screen = 'menu' end
+        elseif hit == 4 then EGG.short(G.egg)           -- 做空：每回 100g
+        elseif hit == 5 then EGG.repayGold(G.egg)       -- 还金：做空平仓（等波动后才分得出赚赔）
+        elseif hit == 6 then EGG.work(G.egg)
+        elseif hit == 7 then G.screen = 'menu' end
       end
     end
     UI.sync(G.ui, G.sc, G.syncState(dt))
@@ -4809,6 +4810,24 @@ function M.short(st)
   st.cash = st.cash + M.SHORT_GOLD * st.price
   st.traded = st.traded + 1
   note(st, '做空 ' .. M.SHORT_GOLD .. 'g（欠金 ' .. string.format('%.0f', st.debtGold) .. 'g）')
+  return true
+end
+
+-- ★ 还金（做空的**平仓**动作）：按现价买回 100g 还掉金欠。
+--   奇匠问："借金和还金中间要分开等波动啊？" —— 对，这就是做空的玩法本体：
+--   借金（做空）时的价格 P1 与还金时的价格 P2 **不一样**才分得出赚赔，
+--   而报价每 5s 才动一次 ⇒ "等波动"是**天然发生**的，不需要额外锁。
+--   （同一档价格里借了立刻还 = 现金原地打转，不赚不赔 ⇒ 玩家自己就不会那么干。）
+M.REPAY_GOLD = 100
+function M.repayGold(st)
+  if (st.debtGold or 0) <= 0 then return false, '没有金欠要还' end
+  local grams = math.min(M.REPAY_GOLD, st.debtGold)
+  local cost = grams * st.price
+  if cost > st.cash then return false, '现金不够还这一笔' end
+  st.cash = st.cash - cost
+  st.debtGold = st.debtGold - grams
+  st.traded = st.traded + 1
+  note(st, '还金 ' .. string.format('%.0f', grams) .. 'g（花 ' .. string.format('%.0f', cost) .. '）')
   return true
 end
 

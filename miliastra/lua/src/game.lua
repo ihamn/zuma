@@ -756,7 +756,7 @@ function G.tick(dt)
         local s = G.sc.metrics.scale
         local bw, bh = 190 * s, 62 * s
         local hit = 0
-        for i = 1, 6 do
+        for i = 1, 7 do
           local col = (i - 1) % 3
           local row = math.floor((i - 1) / 3)
           local bx = G.view.w * 0.5 + (col - 1) * (bw + 26 * s)
@@ -766,9 +766,10 @@ function G.tick(dt)
         if hit == 1 then EGG.buy(G.egg, 1)
         elseif hit == 2 then EGG.sell(G.egg, 1)
         elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.short(G.egg)          -- 做空：每回 100g
-        elseif hit == 5 then EGG.work(G.egg)
-        elseif hit == 6 then G.screen = 'menu' end
+        elseif hit == 4 then EGG.short(G.egg)           -- 做空：每回 100g
+        elseif hit == 5 then EGG.repayGold(G.egg)       -- 还金：做空平仓（等波动后才分得出赚赔）
+        elseif hit == 6 then EGG.work(G.egg)
+        elseif hit == 7 then G.screen = 'menu' end
       end
     end
     UI.sync(G.ui, G.sc, G.syncState(dt))

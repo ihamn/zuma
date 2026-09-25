@@ -689,9 +689,9 @@ local function syncEgg(ui, sc, st)
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
   -- 六个按钮：两行三列
-  local labels = { '买入 1g', '卖出 1g', '借 1 万', '做空 100g', '打 工', '返 回' }
+  local labels = { '买入 1g', '卖出 1g', '借 1 万', '做空 100g', '还金 100g', '打 工', '返 回' }
   local bw, bh = 190 * s, 62 * s
-  for i = 1, 6 do
+  for i = 1, #labels do
     local col = (i - 1) % 3
     local row = math.floor((i - 1) / 3)
     local x = W * 0.5 + (col - 1) * (bw + 26 * s)
