@@ -195,6 +195,22 @@ function M.sell(st, grams)
   return true
 end
 
+-- ★ 按比例买卖（**原奇域的逻辑**：花 50% 余额买入 / 梭哈买入 / 卖 50% / 全部卖出）
+--   注意：不是"买 1g"那种定量买卖 —— 是**按余额/持仓的比例**下单。
+function M.buyPct(st, pct)
+  local cash = st.cash * pct
+  if cash <= 0 or st.price <= 0 then return false, '没钱可买' end
+  return M.buy(st, cash / st.price)
+end
+function M.buyAll(st) return M.buyPct(st, 1) end
+
+function M.sellPct(st, pct)
+  local grams = st.gold * pct
+  if grams <= 0 then return false, '没有持仓' end
+  return M.sell(st, grams)
+end
+function M.sellAll(st) return M.sellPct(st, 1) end
+
 -- 借 1 万元
 function M.borrowCash(st)
   if not M.canBorrow(st) then return false, '欠款到顶，借不了了' end

@@ -808,20 +808,23 @@ function G.tick(dt)
         local s = G.sc.metrics.scale
         local bw, bh = 190 * s, 62 * s
         local hit = 0
-        for i = 1, 7 do
+        for i = 1, 9 do
           local col = (i - 1) % 3
           local row = math.floor((i - 1) / 3)
           local bx = G.view.w * 0.5 + (col - 1) * (bw + 26 * s)
           local by = G.view.h * 0.66 + row * (bh + 22 * s)
           if math.abs(mx - bx) <= bw * 0.5 and math.abs(my - by) <= bh * 0.5 then hit = i end
         end
-        if hit == 1 then EGG.buy(G.egg, 1)
-        elseif hit == 2 then EGG.sell(G.egg, 1)
-        elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.short(G.egg)           -- 做空：每回 100g
-        elseif hit == 5 then EGG.repayGold(G.egg)       -- 还金：做空平仓（等波动后才分得出赚赔）
-        elseif hit == 6 then EGG.work(G.egg)
-        elseif hit == 7 then G.screen = 'menu' end
+        -- ★ 原奇域的交易逻辑：**比例下单**（花 50% 余额 / 梭哈 / 卖 50% / 全部卖出），不是"买 1g"
+        if hit == 1 then EGG.buyPct(G.egg, 0.5)
+        elseif hit == 2 then EGG.buyAll(G.egg)
+        elseif hit == 3 then EGG.sellPct(G.egg, 0.5)
+        elseif hit == 4 then EGG.sellAll(G.egg)
+        elseif hit == 5 then EGG.borrowCash(G.egg)
+        elseif hit == 6 then EGG.short(G.egg)           -- 借金套现：每回 100g
+        elseif hit == 7 then EGG.repayGold(G.egg)       -- 还金：平仓
+        elseif hit == 8 then EGG.work(G.egg)
+        elseif hit == 9 then G.screen = 'menu' end
       end
     end
     UI.sync(G.ui, G.sc, G.syncState(dt))

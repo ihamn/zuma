@@ -3012,7 +3012,10 @@ local function syncEgg(ui, sc, st)
   end
 
   -- 六个按钮：两行三列
-  local labels = { '买入 1g', '卖出 1g', '借 1 万', '借金套现 100g', '还金 100g', '打 工', '返 回' }
+  -- ★ 按原奇域的逻辑：买卖是**比例**下单（50% / 梭哈 / 50% / 全部），不是"买 1g"
+  local labels = { '买入 50%', '梭哈买入', '卖出 50%',
+                   '全部卖出', '借 1 万', '借金套现',
+                   '还金 100g', '打 工', '返 回' }
   local bw, bh = 190 * s, 62 * s
   for i = 1, #labels do
     local col = (i - 1) % 3
@@ -4635,20 +4638,23 @@ function G.tick(dt)
         local s = G.sc.metrics.scale
         local bw, bh = 190 * s, 62 * s
         local hit = 0
-        for i = 1, 7 do
+        for i = 1, 9 do
           local col = (i - 1) % 3
           local row = math.floor((i - 1) / 3)
           local bx = G.view.w * 0.5 + (col - 1) * (bw + 26 * s)
           local by = G.view.h * 0.66 + row * (bh + 22 * s)
           if math.abs(mx - bx) <= bw * 0.5 and math.abs(my - by) <= bh * 0.5 then hit = i end
         end
-        if hit == 1 then EGG.buy(G.egg, 1)
-        elseif hit == 2 then EGG.sell(G.egg, 1)
-        elseif hit == 3 then EGG.borrowCash(G.egg)
-        elseif hit == 4 then EGG.short(G.egg)           -- 做空：每回 100g
-        elseif hit == 5 then EGG.repayGold(G.egg)       -- 还金：做空平仓（等波动后才分得出赚赔）
-        elseif hit == 6 then EGG.work(G.egg)
-        elseif hit == 7 then G.screen = 'menu' end
+        -- ★ 原奇域的交易逻辑：**比例下单**（花 50% 余额 / 梭哈 / 卖 50% / 全部卖出），不是"买 1g"
+        if hit == 1 then EGG.buyPct(G.egg, 0.5)
+        elseif hit == 2 then EGG.buyAll(G.egg)
+        elseif hit == 3 then EGG.sellPct(G.egg, 0.5)
+        elseif hit == 4 then EGG.sellAll(G.egg)
+        elseif hit == 5 then EGG.borrowCash(G.egg)
+        elseif hit == 6 then EGG.short(G.egg)           -- 借金套现：每回 100g
+        elseif hit == 7 then EGG.repayGold(G.egg)       -- 还金：平仓
+        elseif hit == 8 then EGG.work(G.egg)
+        elseif hit == 9 then G.screen = 'menu' end
       end
     end
     UI.sync(G.ui, G.sc, G.syncState(dt))
@@ -5032,6 +5038,22 @@ function M.sell(st, grams)
   st.traded = st.traded + 1
   return true
 end
+
+-- ★ 按比例买卖（**原奇域的逻辑**：花 50% 余额买入 / 梭哈买入 / 卖 50% / 全部卖出）
+--   注意：不是"买 1g"那种定量买卖 —— 是**按余额/持仓的比例**下单。
+function M.buyPct(st, pct)
+  local cash = st.cash * pct
+  if cash <= 0 or st.price <= 0 then return false, '没钱可买' end
+  return M.buy(st, cash / st.price)
+end
+function M.buyAll(st) return M.buyPct(st, 1) end
+
+function M.sellPct(st, pct)
+  local grams = st.gold * pct
+  if grams <= 0 then return false, '没有持仓' end
+  return M.sell(st, grams)
+end
+function M.sellAll(st) return M.sellPct(st, 1) end
 
 -- 借 1 万元
 function M.borrowCash(st)
