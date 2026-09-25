@@ -164,11 +164,13 @@ bb.wrongMark = false
 bb.pairBase = CFG.COMPLEMENT[bb.base][1]
 bb.dock = 0
 BOARD.syncBeads(sc2)
-UI.sync(ui2, sc2, GAME.syncState(DT))            -- 第二帧：刚读出 -> 起 pop 动效
-H.ok(#ui2.fx > 0, '★ 刚读出时起了动效（' .. #ui2.fx .. ' 个）')
-H.ok(ui2.elim[1].localScaleX < 1, '弹出起点是缩小的：' .. tostring(ui2.elim[1].localScaleX))
-step(h2, 30)                                     -- 0.5 秒后应该回到 1
-H.near(ui2.elim[1].localScaleX, 1, 0.05, '动效结束后缩放回到 1')
+UI.sync(ui2, sc2, GAME.syncState(DT))            -- 第二帧：刚读出
+-- ★★ 2026-09-25 按用户要求删掉了"配对时弹一下"（"变大我看上去没有任何意义"），本体也没有这个效果
+--    —— 所以刚读出时**不该有任何动效**，绑定小球出现即 1:1。
+H.eq(#ui2.fx, 0, '★ 刚读出时**没有**动效（"弹一下"已删）：实际 ' .. #ui2.fx .. ' 个')
+H.near(ui2.elim[1].localScaleX, 1, 0.001, '★ 绑定小球出现即 1:1（不缩放）')
+step(h2, 30)                                     -- 半秒后仍是 1
+H.near(ui2.elim[1].localScaleX, 1, 0.001, '半秒后仍是 1（与动效无关）')
 
 -- ⑨ fancy=0：动效/光晕/冷却环/轨道都关掉（真机上哪条炸了就靠这个变量兜底）
 local h3 = newHost(1, { fancy = 0, track = 0, letters = 0 })
