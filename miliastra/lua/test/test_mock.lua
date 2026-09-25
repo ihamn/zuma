@@ -63,13 +63,22 @@ host.click(20, 20)
 H.eq(#got, 1, '点在区域外 -> 不再触发')
 
 -- 键盘
+-- ★ 真机契约：KeyEventType 是**逐键**成员，回调**不带参数**
 local keyHits = 0
-root:AddKeyEventListener(Enum.KeyEventType.KeyDown, function(code)
+H.eq(Enum.KeyEventType.KeyDown, nil, '★ 没有通用的 KeyDown（真机也没有 —— 第一版就栽在这）')
+H.eq(Enum.KeyEventType.KeyboardNormalAttackKeyDown == nil, false, '有逐键成员 KeyboardNormalAttackKeyDown')
+root:AddKeyEventListener(Enum.KeyEventType.KeyboardNormalAttackKeyDown, function()
   keyHits = keyHits + 1
   return false
 end)
-host.keyEvent(Enum.KeyboardKeyCode.KeyR, true)
+host.keyEvent('KeyboardNormalAttackKeyDown')
 H.eq(keyHits, 1, '按键回调被调用')
+-- 返回 true = 已处理：同一按键不再往下传
+local handled = 0
+root:AddKeyEventListener(Enum.KeyEventType.KeyboardJumpKeyDown, function() handled = handled + 1; return true end)
+H.eq(host.keyEvent('KeyboardJumpKeyDown'), true, '回调返回 true -> keyEvent 报"已处理"')
+H.eq(handled, 1, '处理的回调只被调用一次')
+H.eq(host.keyEvent('KeyboardCraftspersonKey2Down'), false, '没注册的键不触发任何东西')
 
 -- Tween
 local tw = game.Tween(ball, { anchoredPositionX = 500 }, 1.0):SetEase(Enum.EaseType.Linear):Play()

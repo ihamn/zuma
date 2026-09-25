@@ -224,6 +224,13 @@ function G.boot()
   if not root then error('找不到挂载控件：脚本要挂在**客户端控件**上（不能挂主屏）') end
   G.root = root
   root:SetActive(true)
+  -- ★ 挂载点（客户端控件容器）自己也要**有尺寸**：它在编辑器里如果是 0×0，
+  --   我们挂进去的所有控件都会被裁掉 —— 表现就是"脚本全跑通了、屏幕上什么都没有"。
+  --   ⚠ 只设尺寸、**不动位置**：位置由编辑器/布局决定，乱设会让整盘偏移。
+  do
+    local ok, err = pcall(function() root:SetSizeDelta(w, h) end)
+    say('把挂载点尺寸设成画布尺寸（%s x %s）：%s', tostring(w), tostring(h), ok and 'ok' or ('失败 ' .. tostring(err)))
+  end
   say('挂载点 = %s', tostring(root))
 
   -- ★ 模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）

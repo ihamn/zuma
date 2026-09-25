@@ -52,31 +52,70 @@ function M.create(opts)
 
   local kt = opts.keyTarget
   if kt then
-    local KC = Enum.KeyboardKeyCode
-    kt:AddKeyEventListener(Enum.KeyEventType.KeyDown, function(code)
-      inp.stats.keys = inp.stats.keys + 1
-      if code == KC.NormalAttackKey then
-        inp.hold = true
-        return true
-      elseif code == KC.TabKey then
-        inp.wantMode = true
-        return true
-      elseif code == KC.KeyR then
-        inp.wantRestart = true
-        return true
-      elseif code == KC.SpaceJumpKey then
-        inp.wantSwap = true
-        return true
+    -- ★★ 真机契约（2026-09-25 真机日志）：
+    --   1. `Enum.KeyEventType` 是**逐键**成员 —— `KeyboardNormalAttackKeyDown`、
+    --      `KeyboardCharacterSkill3KeyDown`、`KeyboardJumpKeyDown` …（官方文档里 164 个），
+    --      **没有** `KeyDown` / `KeyUp` 这种通用成员。第一版按通用名写，真机直接报
+    --      `bad argument #2 to 'AddKeyEventListener' (KeyEventType expected, got nil)`。
+    --   2. 回调**没有参数**（不是"给你一个键码让你自己比"），注册哪个键就代表哪个键；
+    --      返回 true = 已处理（容器内其他控件不再响应这次按键）。
+    --   3. 成员名在不同版本可能微调 → 这里按候选名**探测**，缺哪个就在日志里点名，
+    --      而不是让整局崩在这一行。
+    local KEYMAP = {
+      { 'fireDown', { 'KeyboardNormalAttackKeyDown', 'ControllerNormalAttackKeyDown' } },
+      { 'fireUp', { 'KeyboardNormalAttackKeyUp', 'ControllerNormalAttackKeyUp' } },
+      { 'modeDown', { 'KeyboardOpenShortcutWheelKeyDown' } },          -- Tab：切模式
+      { 'swapDown', { 'KeyboardJumpKeyDown', 'ControllerJumpKeyDown' } }, -- 空格：换手里那颗
+      { 'restartDown', { 'KeyboardCharacterSkill3KeyDown' } },         -- R：重开本关
+    }
+
+    local function pick(cands)
+      for i = 1, #cands do
+        local v = Enum.KeyEventType[cands[i]]
+        if v ~= nil then return v, cands[i] end
       end
-      return false
-    end)
-    kt:AddKeyEventListener(Enum.KeyEventType.KeyUp, function(code)
-      if code == KC.NormalAttackKey then
+      return nil, cands[1]
+    end
+
+    -- 不依赖控件的日志通道（和 game.lua 一样：挂了也要说清是哪个键没注册上）
+    local function log(fmt, a, b)
+      if not print then return end
+      local ok, s = pcall(string.format, fmt, a, b)
+      if not ok then s = tostring(fmt) end
+      pcall(print, '[zuma] ' .. s)
+    end
+
+    local handlers = {
+      fireDown = function()
+        inp.hold = true
+        inp.stats.keys = inp.stats.keys + 1
+        return true
+      end,
+      fireUp = function()
         inp.hold = false
         return true
+      end,
+      modeDown = function() inp.wantMode = true; return true end,
+      swapDown = function() inp.wantSwap = true; return true end,
+      restartDown = function() inp.wantRestart = true; return true end,
+    }
+
+    local bound = {}
+    for i = 1, #KEYMAP do
+      local act, cands = KEYMAP[i][1], KEYMAP[i][2]
+      local et, name = pick(cands)
+      if et == nil then
+        log('⚠ 按键事件 %s 在这台机器上不存在（试过：%s）—— 这个操作暂时用不了', act, name)
+      else
+        local ok, err = pcall(function() kt:AddKeyEventListener(et, handlers[act]) end)
+        if ok then
+          bound[#bound + 1] = act .. '=' .. name
+        else
+          log('⚠ 注册按键事件 %s 失败：%s', name, tostring(err))
+        end
       end
-      return false
-    end)
+    end
+    log('按键绑定：%s', table.concat(bound, ' '), nil)
   end
 
   return inp

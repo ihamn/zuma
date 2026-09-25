@@ -45,7 +45,29 @@ local Enum = {
                        'GuidList', 'ConfigId', 'PrefabId', 'ConfigIdList', 'PrefabIdList' }),
   CursorEventType = enumOf({ 'CursorDown', 'CursorUp', 'CursorEnter', 'CursorExit', 'CursorDrag',
                              'CursorBeginDrag', 'CursorEndDrag', 'CursorClick' }),
-  KeyEventType = enumOf({ 'KeyDown', 'KeyUp', 'KeyHold' }),
+  -- ★★ 真机的 KeyEventType 是**逐键**成员（官方文档 164 个），没有通用的 KeyDown/KeyUp。
+  --    第一版假宿主提供的是 KeyDown/KeyUp，于是"按通用名写"这种错本地一路绿灯、
+  --    到真机报 `KeyEventType expected, got nil`（2026-09-25 真机日志）。
+  --    这里照真机补上我们用到的那几个（键鼠 + 手柄的对应键）。
+  KeyEventType = enumOf({
+    'KeyboardNormalAttackKeyDown', 'KeyboardNormalAttackKeyUp',
+    'KeyboardJumpKeyDown', 'KeyboardJumpKeyUp',
+    'KeyboardOpenShortcutWheelKeyDown', 'KeyboardOpenShortcutWheelKeyUp',
+    'KeyboardCharacterSkill1KeyDown', 'KeyboardCharacterSkill1KeyUp',
+    'KeyboardCharacterSkill2KeyDown', 'KeyboardCharacterSkill2KeyUp',
+    'KeyboardCharacterSkill3KeyDown', 'KeyboardCharacterSkill3KeyUp',
+    'KeyboardCharacterSkill4KeyDown', 'KeyboardCharacterSkill4KeyUp',
+    'KeyboardInteractKeyDown', 'KeyboardInteractKeyUp',
+    'KeyboardMoveForwardKeyDown', 'KeyboardMoveForwardKeyUp',
+    'KeyboardCraftspersonKey1Down', 'KeyboardCraftspersonKey1Up',
+    'KeyboardCraftspersonKey2Down', 'KeyboardCraftspersonKey2Up',
+    'KeyboardCraftspersonKey3Down', 'KeyboardCraftspersonKey3Up',
+    'ControllerNormalAttackKeyDown', 'ControllerNormalAttackKeyUp',
+    'ControllerJumpKeyDown', 'ControllerJumpKeyUp',
+    'ControllerInteractKeyDown', 'ControllerInteractKeyUp',
+    'ControllerMenuConfirmKeyDown', 'ControllerMenuConfirmKeyUp',
+    'ControllerMenuBackKeyDown', 'ControllerMenuBackKeyUp',
+  }),
   TextHorizontalAlignment = { Left = 0, Middle = 1, Right = 2 },
   TextVerticalAlignment = { Top = 0, Middle = 1, Bottom = 2 },
   ImageSource = enumOf({ 'StaticReference', 'Item', 'Equipment', 'Skill', 'UnitStatus',
@@ -643,14 +665,17 @@ function M.newHost(opts)
   end
 
   -- ---------- 键盘 ----------
-  function host.keyEvent(code, down)
+  -- ★ 照真机：参数是**按键事件类型名**（如 'KeyboardNormalAttackKeyDown'），
+  --   回调**不带参数**，返回 true 表示已处理、不再往下传。
+  function host.keyEvent(eventTypeName)
+    local et = Enum.KeyEventType[eventTypeName]
+    if et == nil then return false end
     host.stats.keyEvents = host.stats.keyEvents + 1
-    local et = down and Enum.KeyEventType.KeyDown or Enum.KeyEventType.KeyUp
     for _, c in pairs(host.controls) do
       local l = c.keyListeners[et]
       if l and c.activeInHierarchy then
         for i = 1, #l do
-          if l[i](code) == true then return true end     -- 返回 true = 已处理，停止传播
+          if l[i]() == true then return true end     -- 返回 true = 已处理，停止传播
         end
       end
     end

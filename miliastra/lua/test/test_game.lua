@@ -64,15 +64,15 @@ H.ok(GAME.sc.stats.fired >= 1, '点击后至少发射了一发（fired=' .. GAME
 
 -- 切模式（Tab）：要在 playing 状态下按
 local modeBefore = GAME.sc.mode
-host.keyEvent(Enum.KeyboardKeyCode.TabKey, true)
+host.keyEvent('KeyboardOpenShortcutWheelKeyDown')
 host.tick(1 / 60)
 H.ok(GAME.sc.mode ~= modeBefore, 'Tab 切了模式：' .. modeBefore .. ' -> ' .. GAME.sc.mode)
-host.keyEvent(Enum.KeyboardKeyCode.TabKey, true)
+host.keyEvent('KeyboardOpenShortcutWheelKeyDown')
 host.tick(1 / 60)
 H.eq(GAME.sc.mode, modeBefore, '再按一次切回来')
 
 -- 换球（空格）：不报错且两颗都还在
-host.keyEvent(Enum.KeyboardKeyCode.SpaceJumpKey, true)
+host.keyEvent('KeyboardJumpKeyDown')
 host.tick(1 / 60)
 H.ok(GAME.sc.rb.loaded[1] ~= nil and GAME.sc.rb.loaded[2] ~= nil, '换球后两颗都在')
 
@@ -100,7 +100,7 @@ host.tick(1 / 60)
 H.truthy(GAME.ui.hud.hint.text:find('过关'), '结算提示：' .. tostring(GAME.ui.hud.hint.text))
 
 -- R 重开
-host.keyEvent(Enum.KeyboardKeyCode.KeyR, true)
+host.keyEvent('KeyboardCharacterSkill3KeyDown')
 host.tick(1 / 60)
 H.eq(GAME.screen, 'playing', 'R 之后回到 playing')
 H.eq(GAME.sc.stats.fired, 0, '重开后备弹计数归零')

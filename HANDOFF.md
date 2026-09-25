@@ -449,3 +449,44 @@ run-all 第一行 —— 想严格对齐就装一个 5.3，或 `set ZUMA_LUA=...
   0 = **画布在关卡运行时没生效/没显示**。所以脚本现在会在启动时打
   `客户端控件根控件数 = N`，0 就顺手提示去查【界面控件组管理 → 界面布局 → 初始可见】。
   ⚠ 这条**还没闭合**：模板建对之后再试玩，要看这一行是不是 0。
+---
+
+## 17. ★ 又一个"逐项枚举"的坑：`Enum.KeyEventType` 没有通用的 KeyDown（2026-09-25 10:27 那轮）
+
+模板索引修好之后（`自动认模板：球=1073741852 文本=1073741851 光标=1073741850` ✅），
+第三次试玩死在**最后一根钉子上**：
+
+```
+[zuma] tryBoot 失败：bad argument #2 to 'AddKeyEventListener' (KeyEventType expected, got nil)
+```
+
+**原因**：`input.lua` 里写的是 `Enum.KeyEventType.KeyDown` / `KeyUp`（通用名），
+而真机（官方文档 164 个成员）是**逐键**命名：
+
+```
+KeyboardNormalAttackKeyDown / KeyboardNormalAttackKeyUp      （鼠标左键：开火）
+KeyboardOpenShortcutWheelKeyDown                            （Tab：切模式）
+KeyboardJumpKeyDown                                         （空格：换球）
+KeyboardCharacterSkill3KeyDown                              （R：重开）
+ControllerNormalAttackKeyDown / ControllerJumpKeyDown …     （手柄对应键）
+```
+
+而且**回调没有参数**（不是"给你一个键码自己比"）—— 注册哪个键就代表哪个键，返回 true = 已处理。
+原来按"通用 KeyDown + 比较键码"写，两层都错。
+
+**修法**（`input.lua`）：把逻辑动作映射到**候选事件名**，逐个探测 `Enum.KeyEventType[name] ~= nil`，
+取第一个存在的；注册用 pcall；缺哪个就在日志里点名（`⚠ 按键事件 xxx 在这台机器上不存在`），
+**不再让整局崩在注册那一行**。绑定结果也会打一行 `按键绑定：fireDown=… modeDown=…` 方便核对。
+
+假宿主也照真机改了：`Enum.KeyEventType` 只提供逐键成员（**故意不提供 `KeyDown`**，
+并在 `test_mock.lua` 里断言 `Enum.KeyEventType.KeyDown == nil`），`host.keyEvent()` 改成按
+事件类型名派发、回调不带参数 —— 这样"按通用名写"这种错**本地就会炸**。
+
+**顺手加的一条保险**：启动时把挂载点（客户端控件容器）的尺寸设成画布尺寸
+（只设尺寸、**不动位置** —— 位置由布局决定，乱设会让整盘偏移；第一版连位置一起设，
+把假宿主"根在画布中心"的约定打破，8 项断言当场红）。容器若在编辑器里是 0×0，
+子控件会被裁掉，表现同样是"脚本跑通、屏幕空白"。
+
+**这一课的通用教训**（和 §16 是一对）：千星奇域的枚举／ID 常常是**逐项**的
+（逐键、逐类型、2^30 起的大数字），**没有**我们习惯的那种通用成员。
+凡是看到"官方文档里那个枚举有 160 多个成员"的，就该警觉：不要假设 `Down/Up`、不要假设从 1 开始。
