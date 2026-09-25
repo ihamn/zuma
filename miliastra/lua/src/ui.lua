@@ -1064,8 +1064,14 @@ end
 
 -- ui 一共建了多少个控件（诊断行 + 预算自检用）
 function M.count(ui)
+  -- ★★ 2026-09-25 修：这个自检**少算了 101 个**（漏了绑定球字母池 96 + 背板 1 +
+  --   待发球描边 2 + 待发球字母 2）—— 长期报 817，而真实占用是 917。
+  --   平台上限是"单控件组 1000"，少算 101 会把余量看成 183（实际只有 83）✗。
+  --   现在按池子列全；test_perf 里有断言钉死"它必须等于真机建出来的控件数"。
   local n = #ui.balls + #ui.shots + #ui.links + #ui.elim + #ui.merges
     + #ui.track + #ui.halo + #ui.letter + #ui.loaded
+    + #(ui.elimLetter or {}) + #(ui.loadedLetter or {}) + #(ui.loadedHalo or {})
+    + (ui.backdrop and 1 or 0)
     + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
     + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
