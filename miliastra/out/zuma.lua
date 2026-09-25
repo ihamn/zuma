@@ -3135,6 +3135,32 @@ local function buildHudSpecs(w, h, teach)
   return specs
 end
 
+-- ★★ 自动"借"一张图：真机上图片控件没配图就画成"?"（用户实测：球、轨道、中央全是"?"）。
+--   素材 id 在编辑器里是大数字，抄起来烦 —— 所以让脚本自己在**画布里找**：
+--   官方 ClientUIBaseControl:GetChildren() 能拿到直接子控件，图片控件的 imageId 是**只读**字段。
+--   只要你**在画布里放一个配好图的图片控件**（哪怕是个装饰图标），脚本就把它那张图的 id
+--   拿来当所有球/轨道/光晕的素材，一个数字都不用抄。
+--   （也可以直接填 `artImage=1073741860` 指定；或按碱基分别填 `art=A:id,U:id,...`）
+local function adoptImageId(root)
+  local found = {}
+  local function walk(ctrl, depth)
+    if not ctrl or depth > 3 or #found >= 8 then return end
+    local ok, kids = pcall(function() return ctrl:GetChildren() end)
+    if not ok or type(kids) ~= 'table' then return end
+    for i = 1, #kids do
+      local ch = kids[i]
+      local id = ch and ch.imageId
+      local t = typeof and typeof(ch) or nil
+      if id ~= nil and type(t) == 'string' and t:find('Image', 1, true) then
+        found[#found + 1] = { id = id, name = tostring(ch.name), t = t }
+      end
+      walk(ch, depth + 1)
+    end
+  end
+  walk(root, 1)
+  return found
+end
+
 -- ==================== 启动 ====================
 
 function G.OnInit()
@@ -3236,7 +3262,11 @@ local function detectPrefabs(root)
         built = built + 1
         local t = typeof(c)
         if #probe < 12 then
-          probe[#probe + 1] = '索引 ' .. tostring(i) .. '：建出 ' .. tostring(t)
+          -- ★ 顺带把"这张图控件自带什么图"读出来（官方：imageSource / imageId 是**只读**字段）。
+          --   真机上如果这里打出 id=nil，就是"模板根本没配图" → 每个实例都会画成"?"。
+          local src, iid = c.imageSource, c.imageId
+          probe[#probe + 1] = '索引 ' .. tostring(i) .. '：建出 ' .. tostring(t) ..
+            '（自带图 source=' .. tostring(src) .. ' id=' .. tostring(iid) .. '）'
         end
         for k, word in pairs(want) do
           if found[k] == nil and type(t) == 'string' and t:find(word, 1, true) then found[k] = i end
@@ -3393,6 +3423,21 @@ function G.boot()
         if k and v then art[k] = tonumber(v) end
       end
     end
+    -- 没按碱基指定 → 试"借"画布里现成那张图；再不行就看 artImage 变量
+    if not next(art) then
+      local one = tonumber(tostring(param('artImage', '')))
+      if not one then
+        local cand = adoptImageId(root)
+        for i = 1, #cand do
+          say('画布里发现一张配好图的控件：%s（%s）id=%s', cand[i].name, cand[i].t, tostring(cand[i].id))
+        end
+        if cand[1] then one = tonumber(tostring(cand[1].id)) end
+      end
+      if one then
+        for i = 1, #CFG.BASES do art[CFG.BASES[i]] = one end
+        say('★ 借用素材 id = %s 给全部碱基（想分别指定就填 art=A:id,U:id,...）', tostring(one))
+      end
+    end
     if next(art) then
       local parts = {}
       for i = 1, #CFG.BASES do
@@ -3401,7 +3446,7 @@ function G.boot()
       end
       say('球面素材 id：%s', table.concat(parts, ' '))
     else
-      say('球面素材：不指定 → 用模板自带那张图（不再强制 SetImage，免得真机画成"?"）')
+      say('球面素材：没找到任何可用素材 id → 会画成"?"。请在画布里放一个配好图的图片控件，或填 artImage=<素材id>')
     end
   end
 

@@ -153,4 +153,37 @@ do
   H.truthy(GAME.ui.art and GAME.ui.art['A'] == 1001, 'art 参数被解析进 ui.art：A=1001')
 end
 
+-- ⑪ ★ 自动"借图"：画布里放了一个配好图的图片控件 → 脚本把它那张图的 id 拿来给全部碱基
+do
+  local h11 = MOCK.newHost({ w = 900, h = 900 })
+  h11.prefabs[1] = 'image'
+  h11.prefabs[2] = 'textbox'
+  h11.prefabs[3] = 'cursorarea'
+  h11.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0 }
+  MOCK.install(h11)
+  -- 画布上摆一个"配好图"的图片控件（imageId 是只读字段）
+  local deco = game.InstantiateClientUIControl(1, h11.root)
+  deco.name = '球素材'
+  deco.imageId = 1073741900
+  h11.scriptObj.object = h11.root
+  h11.mount(GAME)
+  H.eq(GAME.error, nil, '借图后能跑：' .. tostring(GAME.error))
+  H.eq(GAME.ui.art['A'], 1073741900, '★ 从画布上借到素材 id = 1073741900，并套给了全部碱基')
+  H.eq(GAME.ui.art['T'], 1073741900, 'T 也用同一个素材')
+  H.truthy((h11.stats.setImage or 0) > 0, '借到图之后才会调 SetImage')
+end
+
+-- ⑫ artImage 变量可以直接指定（不用在画布里摆控件）
+do
+  local h12 = MOCK.newHost({ w = 900, h = 900 })
+  h12.prefabs[1] = 'image'
+  h12.prefabs[2] = 'textbox'
+  h12.prefabs[3] = 'cursorarea'
+  h12.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0, artImage = 1073741999 }
+  MOCK.install(h12)
+  h12.scriptObj.object = h12.root
+  h12.mount(GAME)
+  H.eq(GAME.ui.art['G'], 1073741999, 'artImage=1073741999 直接生效')
+end
+
 H.finish()
