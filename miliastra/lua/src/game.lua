@@ -394,7 +394,8 @@ function G.boot()
   --     素材 id 是编辑器里那张图的"**资产号**"（用户那张白圆图 = 100002）。
   local DEFAULT_ART = 100002
   local art = {}
-  local artAny = nil          -- 全局兜底资产号（棒/光晕/核糖体等不分碱基的控件用它）
+  local artAny = nil          -- 全局兜底资产号（光晕/核糖体/背板等不分碱基的控件用它）
+  local artBar = tonumber(tostring(param('artBar', '')))   -- 棒专用（轨道/连线/瞄准线）：**方图**最合适
   do
     local spec = param('art', '')
     if type(spec) == 'string' and spec ~= '' then
@@ -420,6 +421,7 @@ function G.boot()
         artAny = one
         for i = 1, #CFG.BASES do art[CFG.BASES[i]] = one end
         say('★ 球面素材资产号 = %s（全部碱基共用；想分别指定就填 art=A:id,U:id,...）', tostring(one))
+      if artBar then say('★ 棒（轨道/连线）专用资产号 = %s', tostring(artBar)) end
       end
     end
     if next(art) then
@@ -476,6 +478,7 @@ function G.boot()
     canvas = G.canvas,
     art = art,
     artAny = artAny,
+    artBar = artBar,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

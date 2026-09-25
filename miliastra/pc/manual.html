@@ -183,6 +183,14 @@ http://10.176.136.109:8080/miliastra/out/zuma.lua &nbsp;（下载文件）</p>
     <tr><td><b>资产号</b>（素材 id）</td><td>小数字，如 <code>100002</code></td>
         <td><code>SetImage</code> 用 —— 脚本默认已经填好 <b>100002</b>（一张白圆图）</td></tr>
   </table>
+    <b>需要两张图</b>（都可从素材库里找/自己传）：
+  <table>
+    <tr><th>用在哪</th><th>要什么形状</th><th>脚本变量</th></tr>
+    <tr><td>球面、光晕、核糖体、背板</td><td><b>纯白圆形</b></td><td><code>artImage=资产号</code>（默认 100002）</td></tr>
+    <tr><td>轨道 / 配对连线 / 瞄准线（拉成长条）</td>
+        <td><b>纯白正方形</b>（越小越好，1×1 或 8×8，<b>直角、无描边</b>；圆图拉长会鼓出来）</td>
+        <td><code>artBar=资产号</code>（不填就跟 <code>artImage</code> 一样）</td></tr>
+  </table>
   换图就填脚本变量 <code>artImage=你的资产号</code>；想 5 种碱基各一张图就
   <code>art=A:资产号,U:…,G:…,C:…,T:…</code>。<br>
   （脚本也会先在画布里找一张配好图的图片控件来"借"它的资产号；实在没有就用默认的 100002。）

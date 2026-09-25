@@ -2330,7 +2330,8 @@ local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex, artId)
   setColor(ui, c, hex)
   -- ★ 棒也要设素材：真机上不设就画成"?" —— 轨道/连线/瞄准线全是棒，
   --   用户看到的"轨道是一堆问号拼出来的"就是这里。
-  setImage(ui, c, artId or ui.artAny)
+  --   ★ 棒优先用 artBar（**方图**；圆图拉成长条会鼓出来，用户已反馈"轨道用圆有点难看"）。
+  setImage(ui, c, artId or ui.artBar or ui.artAny)
 end
 
 -- 把一个控件当"一颗球"用
@@ -2400,6 +2401,8 @@ function M.create(opts)
   ui.art = opts.art or {}
   -- 全局兜底资产号：棒/光晕/核糖体/冷却环这些不分碱基的控件用它（不设就全是"?"）
   ui.artAny = opts.artAny or ui.art['A'] or ui.art[CFG.BASES[1]]
+  -- 棒（轨道/连线/瞄准线）专用素材：**方图**最好（圆图拉长会鼓出来）
+  ui.artBar = opts.artBar or ui.artAny
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -2421,6 +2424,16 @@ function M.create(opts)
     c:SetActive(true)                       -- 文档：动态创建默认 active=false
     c:SetVisible(false)
     c.canControllerFocus = false
+    -- ★★ 兜底：**凡是图片控件，建出来就先把素材设上**。
+    --   真机事实：动态创建的图片控件**不继承**模板图，不设素材就画成"?"。
+    --   原来靠每个绘制分支自己记得设 —— 漏一处就冒一批问号（用户报了两次）。
+    --   放在这里 = 从源头堵住，跟后面怎么画无关。
+    if ui.artAny then
+      local t = typeof and typeof(c) or nil
+      if type(t) == 'string' and t:find('Image', 1, true) then
+        setImage(ui, c, ui.artAny)     -- 棒后面会被 placeSeg 改成 ui.artBar（方图）
+      end
+    end
     return c
   end
 
@@ -3440,7 +3453,8 @@ function G.boot()
   --     素材 id 是编辑器里那张图的"**资产号**"（用户那张白圆图 = 100002）。
   local DEFAULT_ART = 100002
   local art = {}
-  local artAny = nil          -- 全局兜底资产号（棒/光晕/核糖体等不分碱基的控件用它）
+  local artAny = nil          -- 全局兜底资产号（光晕/核糖体/背板等不分碱基的控件用它）
+  local artBar = tonumber(tostring(param('artBar', '')))   -- 棒专用（轨道/连线/瞄准线）：**方图**最合适
   do
     local spec = param('art', '')
     if type(spec) == 'string' and spec ~= '' then
@@ -3466,6 +3480,7 @@ function G.boot()
         artAny = one
         for i = 1, #CFG.BASES do art[CFG.BASES[i]] = one end
         say('★ 球面素材资产号 = %s（全部碱基共用；想分别指定就填 art=A:id,U:id,...）', tostring(one))
+      if artBar then say('★ 棒（轨道/连线）专用资产号 = %s', tostring(artBar)) end
       end
     end
     if next(art) then
@@ -3522,6 +3537,7 @@ function G.boot()
     canvas = G.canvas,
     art = art,
     artAny = artAny,
+    artBar = artBar,
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

@@ -188,4 +188,47 @@ do
   H.eq(GAME.ui.art['G'], 1073741999, 'artImage=1073741999 直接生效')
 end
 
+-- ⑬ ★★ 铁律：整局建完之后，**每一个图片控件都必须有素材**（imageId 非 nil）。
+--    真机上"没设素材的图片控件"就是画成"?"；用户报过两次（球那批、轨道那批），
+--    根因都是"某个绘制分支忘了设"。这条断言把整个类别的 bug 一次钉死。
+do
+  local h13 = MOCK.newHost({ w = 900, h = 900 })
+  h13.prefabs[1] = 'image'
+  h13.prefabs[2] = 'textbox'
+  h13.prefabs[3] = 'cursorarea'
+  h13.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0 }
+  MOCK.install(h13)
+  h13.scriptObj.object = h13.root
+  h13.mount(GAME)
+  local imgs, missing, sample = 0, 0, nil
+  for _, c in pairs(h13.controls) do
+    local t = typeof and typeof(c) or nil
+    if type(t) == 'string' and t:find('Image', 1, true) then
+      imgs = imgs + 1
+      if c.imageId == nil then
+        missing = missing + 1
+        sample = sample or tostring(c.name)
+      end
+    end
+  end
+  H.truthy(imgs > 100, '图片控件有一大堆（' .. tostring(imgs) .. ' 个）')
+  H.eq(missing, 0, '★ 每个图片控件都设了素材（漏一个真机就是"?"）；共 ' .. tostring(imgs)
+    .. ' 个图片控件，缺 ' .. tostring(missing) .. ' 个' .. (sample and ('，例如 ' .. sample) or ''))
+end
+
+-- ⑭ 棒可以用单独的"方图"资产号（artBar）—— 圆图拉成长条会鼓出来
+do
+  local h14 = MOCK.newHost({ w = 900, h = 900 })
+  h14.prefabs[1] = 'image'
+  h14.prefabs[2] = 'textbox'
+  h14.prefabs[3] = 'cursorarea'
+  h14.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0,
+                 artImage = 100002, artBar = 100003 }
+  MOCK.install(h14)
+  h14.scriptObj.object = h14.root
+  h14.mount(GAME)
+  H.eq(GAME.ui.artAny, 100002, '球面用 artImage=100002')
+  H.eq(GAME.ui.artBar, 100003, '★ 棒用 artBar=100003（方图）')
+end
+
 H.finish()
