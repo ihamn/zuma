@@ -2407,6 +2407,8 @@ function M.create(opts)
   ui.artBar = opts.artBar or ui.artAny
   -- 环（洞穴那几圈）专用素材：**空心圆**（实心圆装成环要叠层，效果差）
   ui.artRing = opts.artRing or ui.artAny
+  -- 开火冷却环：**本体没有** → 默认关（cd=1 才画）
+  ui.cdOn = opts.cd or 0
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
@@ -2789,7 +2791,12 @@ function M.sync(ui, sc, st)
     else
       setVisible(ui, ui.elim[i], false)
       if ui.elimLetter and ui.elimLetter[i] then setVisible(ui, ui.elimLetter[i], false) end
-      if eh then setVisible(ui, eh, false) end
+      -- ★★ 这里原来写的是 `if eh then setVisible(ui, eh, false) end` —— 而 eh 是上面 if 分支里的
+      --    local，**出了作用域**（Lua 不报错，直接是 nil），于是这条隐藏**永远不执行**
+      --    → 亮过的白圈永久留在三消道上。用户报"没匹配也有一堆奇怪白圈"就是它。
+      --    教训：跨分支用局部变量这种错 Lua 静默通过，只有"配对消失后要收干净"的测试能逮住。
+      local stale = ui.halo and ui.haloHalf and ui.halo[ui.haloHalf + i]
+      if stale then setVisible(ui, stale, false) end
     end
   end
   -- 读完的球（或整段被消掉）：让它的绑定小球"炸开淡出"再消失
@@ -2886,9 +2893,12 @@ function M.sync(ui, sc, st)
       math.max(1, V.aimWidth * (mt.scale or 1)), C.aim)
     -- 核糖体本体
     placeBead(ui, ui.rb, cx, cy, rb.x, rb.y, R, C.rbBody)
-    -- 开火冷却环：径向填充，满了就该能打了（本体没有这个，是我们加的"信息量美化"）
+    -- 开火冷却环：径向填充，满了就该能打了。
+    -- ★★ **本体没有这个东西**（`src/render.js` 里根本没有 cooldown 的绘制，它只是规则值）。
+    --    按"屏幕上默认不许出现本体没有的东西"这条规矩（HANDOFF §19），**默认关**；
+    --    想看就填脚本变量 cd=1。
     if ui.cd then
-      if ui.fancy ~= 0 and rb.cooldown and rb.cooldown > 0.001 then
+      if ui.fancy ~= 0 and ui.cdOn == 1 and rb.cooldown and rb.cooldown > 0.001 then
         local total = (CFG.DESIGN and CFG.DESIGN.fireCooldown) or 0.16
         local p = 1 - math.min(1, rb.cooldown / total)
         placeBead(ui, ui.cd, cx, cy, rb.x, rb.y, R * 1.45, C.cd)
@@ -3664,6 +3674,7 @@ function G.boot()
     artAny = artAny,
     artBar = artBar,
     artRing = artRing,
+    cd = tonumber(tostring(param('cd', ''))) or 0,   -- 开火冷却环（本体没有 → 默认关）
     ballPrefab = G.prefabs.ball,
     ballCount = param('ballCount', 96),
     shotPrefab = G.prefabs.shot,

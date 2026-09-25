@@ -109,7 +109,7 @@ H.near(ui.letter[3].sizeDeltaX, 2 * b1.r, 1e-9, '字母框跟球一样大（居�
 H.eq(ui.cave.visible, false, '静止练习关没有洞穴（本体：sc.still 时不画）')
 H.eq(ui.caveLabel.visible, false, '洞穴文字也跟着隐藏')
 
-local h6 = newHost(6)
+local h6 = newHost(6, { cd = 1 })   -- 冷却环本体没有（默认关），这条专门测它 → 显式打开
 local ui6, sc6 = GAME.ui, GAME.sc
 H.eq(ui6.cave.visible, true, '★ 有轨道的关画出了洞穴')
 local endPt = sc6.path:pointAt(sc6.path.length)
@@ -139,7 +139,7 @@ H.eq(redOf(CFG.BASE_COLOR['A']), ui6.merges[1].imageColor.r, '并入球的颜色
 -- ⑤ 冷却环：冷却中显示、冷却好了隐藏
 sc6.rb.cooldown = (CFG.DESIGN and CFG.DESIGN.fireCooldown or 0.16) * 0.5
 UI.sync(ui6, sc6, GAME.syncState(DT))
-H.eq(ui6.cd.visible, true, '★ 冷却中显示冷却环')
+H.eq(ui6.cd.visible, true, '★ cd=1 时冷却中显示冷却环')
 sc6.rb.cooldown = 0
 UI.sync(ui6, sc6, GAME.syncState(DT))
 H.eq(ui6.cd.visible, false, '冷却好了冷却环消失')
@@ -255,6 +255,44 @@ do
   H.ok(math.abs(ratio - math.sqrt(2)) < 1e-6,
     '★ 大小球半径比 R/r = ' .. string.format('%.4f', ratio) .. '（应 = √2 = 1.4142）'
     .. '；画到屏幕上是直径 ' .. string.format('%.1f', mt.R * 2) .. ' : ' .. string.format('%.1f', mt.r * 2))
+end
+
+-- ⑭ ★★ **配对消失后要收干净** —— 用户报"没匹配却有一堆白圈"的真凶：
+--    隐藏白描边那句写成了 `if eh then ...`，而 eh 是另一个分支里的 local（出了作用域 = nil）
+--    → 白圈永久残留。这条断言专门盯"画完要能擦掉"。
+do
+  newHost(2)                                  -- 第 2 关：开局自带已读出的球（= 有白描边）
+  UI.sync(GAME.ui, GAME.sc, GAME.syncState(DT))
+  local live = 0
+  for i = 1, #GAME.ui.halo do
+    if GAME.ui.halo[i].visible then live = live + 1 end
+  end
+  H.ok(live > 0, '开局有描边亮着：' .. live .. ' 个')
+
+  -- 取消所有配对（模拟"被消掉 / 状态回退"）
+  for i = 1, #GAME.sc.chain.balls do
+    local b = GAME.sc.chain.balls[i]
+    b.paired = false
+    b.wrongMark = false
+    b.pairBase = nil
+  end
+  BOARD.syncBeads(GAME.sc)
+  UI.sync(GAME.ui, GAME.sc, GAME.syncState(DT))
+  local left = 0
+  for i = 1, #GAME.ui.halo do
+    if GAME.ui.halo[i].visible then left = left + 1 end
+  end
+  H.eq(left, 0, '★ 取消配对后**一个描边都不许残留**（白圈 bug 就是这条没测）')
+  local el = 0
+  for i = 1, #GAME.ui.elim do
+    if GAME.ui.elim[i].visible then el = el + 1 end
+  end
+  H.eq(el, 0, '★ 绑定小球也一起收干净')
+  local lt = 0
+  for i = 1, #GAME.ui.elimLetter do
+    if GAME.ui.elimLetter[i].visible then lt = lt + 1 end
+  end
+  H.eq(lt, 0, '★ 绑定球字母也收干净')
 end
 
 H.finish()
