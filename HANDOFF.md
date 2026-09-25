@@ -594,31 +594,36 @@ showCursor   boolean   读写   是否显示常驻光标；
 后者本体里没有对应物（canvas 用绘制顺序，我们只能用创建顺序），必须当成一条契约写下来。
 ---
 
-## 22. ★ 关卡表变更：删掉"外螺旋"（2026-09-25，奇匠决定）
+## 22. ★ 关卡表变更：删掉"内螺旋"（2026-09-25，奇匠先说反了一次）
 
-用户原话："**外螺旋是伪命题，不要了，冲突的地方记住替换**"，并在追问后明确：
+用户原话："**外螺旋是伪命题，不要了，冲突的地方记住替换**"，追问后明确：
 
-> 整关删掉；**新手关里涉及"外"的换成"内"，正式关里的直接删掉**。
+> 整关删掉；**新手关里涉及（外）的换成（内），正式关里的直接删掉**。
 
-执行（`src/levels.js`）：
+我照此做完了（删 `spiral-outer`、新手关全换 `spawn-inner`）—— 然后用户 10 分钟后发现：
+
+> **"我靠内外螺旋搞反了！！！"**
+
+他要删的其实是**内**那一关。于是按镜像又做了一遍。**最终状态**：
 
 | 改了什么 | 结果 |
 |---|---|
-| 正式关 `spiral-outer`（"螺旋 · 出球道在外"） | **整关删除** → LEVELS 从 4 关变 3 关：`spiral-inner` / `cross-return` / `endless` |
-| 新手关里 6 处 `railOrder: 'spawn-outer'` | **全部换成 `'spawn-inner'`** → 7 个新手关现在都是"出球道在内" |
-| 剩下还在用 `spawn-outer` 的 | 只有 `cross-return` / `endless` 两个正式关（它们的骨架设计如此） |
+| 正式关 `spiral-inner`（"螺旋 · 出球道在内"） | **整关删除** → LEVELS 剩 3 关：`spiral-outer` / `cross-return` / `endless` |
+| 新手关里唯一用"内"的 `t7-mix` | `spawn-inner` → **`spawn-outer`** |
+| **结果** | **10 个关卡全部 `spawn-outer`，整个游戏不再出现 `railOrder: 'spawn-inner'`** |
+| `ALL_LEVELS` | 11 → **10 关**；`levelIndex=8` 仍是 `spiral-outer`（与最初一致） |
 | `ALL_LEVELS` | 11 关 → **10 关**；`levelIndex=8` 从 spiral-outer 变成 **spiral-inner** |
 
 **"冲突的地方"清单（都已替换 + 测试通过）**：
-1. 本体测试断言：`test-tutorial.mjs`（`LEVELS.length === 4 && LEVELS[0].id === 'spiral-outer'` → `=== 3 && === 'spiral-inner'`）
+1. 本体测试断言：`test-tutorial.mjs`（`LEVELS.length === 4 && LEVELS[0].id === 'spiral-outer'` → `=== 3 && === 'spiral-outer'`，因为最终保留的正是 spiral-outer）
 2. `tools/smoke.mjs`：菜单条目数写死 11 → 改成 `Z.levelCount`；核心关 4 → 3；
    **`CORE0 = Z.levelCount - 4` → `- 3`**（这个最容易漏：它是"第一个核心关"的下标，错了会让物理/洞穴测试跑到新手关上）
 3. **`tools/test-geometry.mjs` / `test-insert.mjs` 里三处 `LEVELS[2]`** → 它们要的是"交叉关"，
    删一关后下标整体前移、`LEVELS[2]` 变成了 `endless`（两条断言当场红）→ **改成按 id 查**
    （`LEVELS.find(l => l.id === 'cross-return')`）
-4. 移植侧：`test_pair.lua` 的 `byId('spiral-outer')` → `'spiral-inner'`；`test_levels.lua` 的"一共 11 关" → 10
+4. 移植侧：`test_levels.lua` 的"一共 11 关" → 10；`test_pair.lua` 保持 `byId('spiral-outer')`（最终关还在）
 5. 生成物：`miliastra/lua/src/levels_data.lua`（重新导出）、`out/levels.json|md`、`zuma.html`、`out/zuma.lua`
-6. 文档：`DESIGN.md`（两张数值表加删除标注 + 变更说明）、`miliastra/pc/manual.html`（`levelIndex=8` 现在是 spiral-inner）、
+6. 文档：`DESIGN.md`（两张数值表加删除标注 + 变更说明）、`miliastra/pc/manual.html`（`levelIndex=8` = spiral-outer）、
    `miliastra/docs/02-考证-节点图.md` 的槽位表
 
 **教训（值得单独立一条规矩）**：**测试里不要按数字下标取关卡**。

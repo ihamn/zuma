@@ -3442,8 +3442,8 @@ ok  整个界面没有任何文案泄漏 Infinity / NaN / undefined / null
 
 `
 关卡           匹配模式        七球模式                    反应次数
-（spiral-outer 已于 2026-09-25 删除，见 §关卡表下方注）
-spiral-inner   30.1s clear     32.2~39.9s  clear           43~56
+（spiral-inner 已于 2026-09-25 删除，见 §关卡表下方注；下表保留当年实测的 spiral-outer 一行）
+spiral-outer   30.8s clear     26.9~43.3s  clear           41~51
 cross-return   40.2s clear     48.4~54.3s  clear           58~63
 endless        30.1s score     7.7~22.2s   score           28~34
 `
@@ -3933,13 +3933,14 @@ t1~t4   1292（静止关，见 §63）      spiral-outer  2354
 t8      1776                        cross-return  4357（另一种骨架，未改，见 62.4）
 `
 
-> ★ **2026-09-25 关卡表变更（奇匠决定）**：删掉正式关 `spiral-outer`（"螺旋 · 出球道在外"）——
-> 原话是"**外螺旋是伪命题**"。同时**新手关里所有 `railOrder: 'spawn-outer'` 全部换成 `'spawn-inner'`**，
-> 于是"出球道在外"这种布局在整个游戏里不再出现（`spawn-outer` 只剩 `cross-return` / `endless` 在用）。
-> 影响面（均已同步）：`src/levels.js`、`tools/test-tutorial.mjs` 的 LEVELS 断言、`tools/smoke.mjs` 的菜单条目数、
+> ★ **2026-09-25 关卡表变更（奇匠决定；中间奇匠先说反过一次，这是更正后的最终状态）**：
+> 删掉正式关 **`spiral-inner`**（"螺旋 · 出球道在内"），保留 `spiral-outer`（出球道在外）。
+> 同时把新手关里**唯一用"内"的那一关**（`t7-mix`）也换成 `'spawn-outer'` ——
+> 于是**整个游戏不再出现 `railOrder: 'spawn-inner'`**。
+> 影响面（均已同步）：`src/levels.js`、`tools/test-tutorial.mjs` 的 LEVELS 断言、`tools/smoke.mjs` 的菜单条目数与核心关下标、
 > `tools/test-{geometry,insert}.mjs` 里按数字下标取"交叉关"的三处（已改成按 id 查）、
 > 导出物 `miliastra/lua/src/levels_data.lua`、手册与本文档的关卡编号。
-> ⚠ 教训：**测试里别按数字下标取关卡**（`LEVELS[2]` 这种删一关就全错位）—— 按 `id` 查。
+> ⚠ 教训：**测试里别按数字下标取关卡**（`LEVELS[2]` 这种删一关就静默指向别的关 —— 这次两条 z 层级断言就是这么红的）。
 
 ## 63. 静止练习关：①~④ 连轨道都没有
 
