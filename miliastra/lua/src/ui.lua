@@ -550,17 +550,13 @@ function M.sync(ui, sc, st)
     elseif fx.kind == 'fire' then
       local k = (u < 0.4) and (u / 0.4) or (1 - (u - 0.4) / 0.6)
       setScaleRaw(c, 1 + 0.18 * k)
-    elseif fx.kind == 'gone' then
-      setScaleRaw(c, 1 + 0.9 * easeOut(u))
-      local r, g, b = rgbOf(fx.hex)
-      c.imageColor = Color.FromRGBA(r, g, b, math.floor(255 * (1 - u) + 0.5))
     end
+    -- ★★ 2026-09-25 删掉 'gone'（"炸开淡出"：把控件放大到 1.9× 再淡出）。
+    --   用户原话："我说变大直接删掉就可以了" —— 他会把那个放大效果本身当成"小球异常增大"，
+    --   而且它确实带来一整类"池化复用把上一颗球的缩放带给新球"的问题（HANDOFF §29）。
+    --   现在被消掉的球就是**直接收掉**（下一帧槽位空了自然隐藏），不再有放大/淡出。
     if u >= 1 then
-      if fx.kind == 'gone' then
-        setVisible(ui, c, false)
-      else
-        setScaleRaw(c, 1)
-      end
+      setScaleRaw(c, 1)
       if fx.hex then invalidateColor(ui, c) end
       table.remove(ui.fx, i)
     end
@@ -659,7 +655,6 @@ function M.sync(ui, sc, st)
         cancelFx(ui, ui.elim[i])          -- 换了另一颗球 = 回收：清掉残留动效 + 缩放复位
         ui.elimShown[i] = key
       end
-      cancelFx(ui, ui.elim[i], 'gone')    -- 兜底：只要这一帧还要画球，就不许再有 gone 在跑
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
       -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
@@ -704,7 +699,7 @@ function M.sync(ui, sc, st)
       if stale then setVisible(ui, stale, false) end
     end
   end
-  -- 读完的球（或整段被消掉）：让它的绑定小球"炸开淡出"再消失
+  -- 读完的球（或整段被消掉）：把它的绑定小球**直接收掉**（原有"炸开淡出"已按用户要求删除，见上）
   if ui.fancy ~= 0 then
     for pid, c in pairs(ui.elimOwner) do
       if not liveElim[pid] then
@@ -714,18 +709,8 @@ function M.sync(ui, sc, st)
           if e and e.partner and e.partner.id == pid then wasLive = true; break end
         end
         if not wasLive and ui.wasPaired[pid] == true then
-          -- ★★ 只有当这颗控件**这一刻是空着的**（槽位记录为 nil）才播"炸开淡出"：
-          --   空着 = 已经收干净、不会再被画，放大它只是给玩家看消散；
-          --   若这一刻槽位已经被**另一颗球接管**（elimShown[i] ~= nil），就绝不能挂放大动效
-          --   —— 那正是用户报的"3n 道小球异常增大"（HANDOFF §29）。
-          --   （回收发生在后面时，由 cancelFx 在换球那一帧兜底清掉。）
-          local idx = ui.elimSlot[pid]
-          local free = (idx ~= nil) and (ui.elimShown[idx] == nil)
-          if free then
-            ui.fx[#ui.fx + 1] = { c = c, kind = 'gone', t = 0, dur = 0.22,
-                                  hex = ui.elimHex[pid] or '#ffffff' }
-            invalidateColor(ui, c)
-          end
+          -- 收掉这颗球：如果它的槽位还残留着动效（比如"弹一下"还没播完），一并清掉并复位缩放
+          cancelFx(ui, c)
         end
         ui.elimOwner[pid] = nil
         ui.elimSlot[pid] = nil
