@@ -32,12 +32,12 @@ function hintLines(l) { return Object.prototype.toString.call(l.hint) === '[obje
 group('一、七关的配方都完整（缺字段的关卡会安静地退化成普通关）');
 check('一共 7 关（①③ 已合并：反色 + 五色球本来就是同一课）',
   TUTORIALS.length === 7, 'TUTORIALS=' + TUTORIALS.length);
-check('全部关卡表 = 新手关 + 原来的 4 关', ALL_LEVELS.length === TUTORIALS.length + LEVELS.length,
+check('全部关卡表 = 新手关 + 正式关', ALL_LEVELS.length === TUTORIALS.length + LEVELS.length,
   ALL_LEVELS.length + ' = ' + TUTORIALS.length + ' + ' + LEVELS.length);
-check('★ 原来的 4 关在 ALL_LEVELS 里排最后（测试/探针依赖 LEVELS[0] 不变）',
+check('★ 正式关在 ALL_LEVELS 里排最后（测试/探针依赖 LEVELS[0] 不变）',
   ALL_LEVELS[ALL_LEVELS.length - 1].id === 'endless');
-check('★ LEVELS 本身没被改动（大量测试依赖 LEVELS[0] = spiral-outer）',
-  LEVELS.length === 4 && LEVELS[0].id === 'spiral-outer' && LEVELS[0].prefill === 14);
+check('★ 正式关 3 个；LEVELS[0] = spiral-inner（2026-09-25 删掉了 spiral-outer）',
+  LEVELS.length === 3 && LEVELS[0].id === 'spiral-inner' && LEVELS[0].prefill === 14);
 check('每关都有 id / name / short / hint / 球数预算',
   TUTORIALS.every(function (l) { return l.id && l.name && l.short && l.hint && l.ballBudget > 0; }));
 check('每关都是"清空过关"（scoreTarget = Infinity），不会被分数提前结束',

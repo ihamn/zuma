@@ -101,7 +101,8 @@ check('层级区间无缝覆盖全路径', contiguous, 'runs=' + runs.length);
 
 // ---------- 交叉关 ----------
 group('交叉关：跨层桥 / 同层自交');
-const lv2 = LEVELS[2];
+// ★ 2026-09-25：删掉 spiral-outer 后 LEVELS 下标整体前移 —— **别按数字下标取关**，按 id 查
+const lv2 = LEVELS.find(function (l) { return l.id === 'cross-return'; });
 const sp2 = lv2.makeSpine(view, lv2);
 const path2 = buildPath(sp2, { samples: DESIGN.pathSamples, center: { x: view.cx, y: view.cy } });
 assignLayers(path2, lv2.layers(path2, sp2));

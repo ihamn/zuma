@@ -1,4 +1,4 @@
--- 全关卡巡检：11 个关卡逐个装配 + 让机器人打，检查
+-- 全关卡巡检：每个关卡逐个装配 + 让机器人打，检查
 --   ① 装配不报错、② 控件数不超平台上限、③ 文案长度不超上限、④ 静止练习关必须能过。
 -- 这是移植侧的 probe-play：跑一遍就能看出哪一关的数据有问题。
 
@@ -7,7 +7,7 @@ local MOCK = require('mock')
 local GAME = require('game')
 local LEVELS_DATA = require('levels_data')
 
-H.suite('11 个关卡巡检')
+H.suite('全关卡巡检')
 
 local CANVAS = 900
 local host = MOCK.newHost({ w = CANVAS, h = CANVAS })
@@ -28,7 +28,7 @@ host.scriptObj.object = host.root
 host.mount(GAME)
 
 local total = #LEVELS_DATA.LEVELS
-H.eq(total, 11, '一共 11 关')
+H.eq(total, 10, '一共 10 关（2026-09-25 删掉了 spiral-outer）')
 
 local function cursorAt(b) return b.x, CANVAS - b.y end
 

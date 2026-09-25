@@ -14,21 +14,13 @@
 import { spiralSpine, crossReturnSpine } from './spines.js';
 
 export const LEVELS = [
-  {
-    id: 'spiral-outer',
-    name: '螺旋 · 出球道在外',
-    short: '螺旋·外',
-    makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
-    layers: null,
-    prefill: 14,
-    // 本关场上总共出现过的球数上限（含开局铺的 prefill）。
-    // 48 颗 @冒球率 1.06 颗/秒 ≈ 45 秒的出球量，给玩家足够操作余地。
-    ballBudget: 48,
-    // Infinity = 这一关**不**走分数过关。清空就是唯一目标，
-    // 否则 500 分（=50 颗）会抢在清空前面把关卡结束掉。
-    scoreTarget: Infinity,
-  },
+  // ★ 2026-09-25 按奇匠决定：**删掉 'spiral-outer'（螺旋·出球道在外）这一关**。
+  //   理由（原话）："外螺旋是伪命题" —— 出球道在外那条布局没有存在的必要。
+  //   影响面（都已同步改齐）：本体测试 test-tutorial.mjs 的 LEVELS 断言、
+  //   新手关里所有 `railOrder: 'spawn-outer'` → 'spawn-inner'、
+  //   导出物 miliastra/lua/src/levels_data.lua、DESIGN.md 的数值表、手册里的关卡编号。
+  //   ⚠ 删关会让 LEVELS[0] 从 spiral-outer 变成 spiral-inner —— 大量测试拿 LEVELS[0]
+  //     当夹具（不依赖 id，只依赖"有个能跑的螺旋关"），所以它们不用改。
   {
     id: 'spiral-inner',
     name: '螺旋 · 出球道在内',
@@ -118,7 +110,7 @@ export const TUTORIALS = [
     short: '配对',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -141,7 +133,7 @@ export const TUTORIALS = [
     short: '三的倍数',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -160,7 +152,7 @@ export const TUTORIALS = [
     short: '配错的代价',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -182,7 +174,7 @@ export const TUTORIALS = [
     short: '加球',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     // ★ §65 加球也放在静止练习里（用户：「洞穴往后放放」）——
     //   插入靠的是绳模型的"顶开"，而静止关**速度归零但绳模型照跑**，
@@ -205,7 +197,7 @@ export const TUTORIALS = [
     short: '死球',
     makeSpine: spiralSpine,
     turns: 0.75,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     still: true,
     centerChain: true,
@@ -227,7 +219,7 @@ export const TUTORIALS = [
     name: '⑥ 洞穴',
     short: '洞穴',
     makeSpine: spiralSpine,
-    railOrder: 'spawn-outer',
+    railOrder: 'spawn-inner',
     layers: null,
     bases: ['A', 'U'],
     script: 'A U A U A U A U A U',
@@ -258,7 +250,8 @@ export const TUTORIALS = [
   }
 ];
 
-// 游戏里实际用的关卡表：新手关在前，原本那四个关在后。
-// ⚠ 故意**不改** LEVELS 本身 —— 测试与探针大量依赖 LEVELS[0] 就是 spiral-outer，
-//   把新手关塞进去会把几十条断言的含义悄悄改掉（这类"改测试含义"的坑本轮已经踩过）。
+// 游戏里实际用的关卡表：新手关在前，正式关（原来的核心关）在后。
+// ⚠ 不把新手关塞进 LEVELS 本身 —— 测试与探针大量拿 LEVELS[0] 当夹具，
+//   混进去会把几十条断言的含义悄悄改掉（这类"改测试含义"的坑本轮已经踩过）。
+//   ★ 2026-09-25：LEVELS 删掉了 spiral-outer，所以 LEVELS[0] 现在是 spiral-inner。
 export const ALL_LEVELS = TUTORIALS.concat(LEVELS);

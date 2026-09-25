@@ -78,12 +78,12 @@ if (!Z) process.exit(1);
 //   都会静默失败（而且看起来像是物理坏了）。
 group('★ 开始菜单（§61）');
 check('★ 开局在菜单，不是直接进游戏', Z.screen === 'menu', 'screen=' + Z.screen);
-check('★ 菜单条目 = 全部关卡（7 新手 + 4 核心）', (Z.menuItems || []).length === 11,
+check('★ 菜单条目 = 全部关卡（7 新手 + 正式关）', (Z.menuItems || []).length === Z.levelCount,
   '条目=' + (Z.menuItems || []).length);
 check('★ 菜单条目分了两组', (function () {
   const g = {};
   (Z.menuItems || []).forEach(function (it) { g[it.group] = (g[it.group] || 0) + 1; });
-  return g['新手关'] === 7 && g['核心关'] === 4;
+  return g['新手关'] === 7 && g['核心关'] === Z.levelCount - 7;   // 2026-09-25 删了 spiral-outer：核心关 4 → 3
 })(), (Z.menuItems || []).map(function (i) { return i.group; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('/'));
 const _headMenu = Z.state.sc.chain.balls[0].wp;
 pump(90);
@@ -107,7 +107,7 @@ check('★ 菜单态**不画局内 HUD**（关卡名/分数不该从菜单后面
 // ★ §63 注意：第 1~4 关是**静止练习关**（链子不动、没有洞穴）。
 //   下面的物理/洞穴测试必须跑在**核心关**上，所以这里从第一个核心关开始。
 //   （踩过一次：忘了这件事的话，"珠串在滚动"和"洞穴吞球"会一起失败。）
-const CORE0 = Z.levelCount - 4;
+const CORE0 = Z.levelCount - 3;   // ★ 2026-09-25：核心关只剩 3 个（删了 spiral-outer）
 check('★ 第 1 关是静止练习关（不前进、没有洞穴）', Z.state.level.still === true,
   '关卡=' + Z.state.level.name);
 Z.start(CORE0);                  // <- 从这里开始才是"在玩"

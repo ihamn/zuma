@@ -166,7 +166,7 @@ const wz = scD.path.zAt(scD.merges[0].t >= 0 ? Math.max(0, scD.chain.balls[0].wp
 check('并入中的 z 取自轨道层（不是硬编码的空中层）', mz === wz, 'mergeZ=' + mz + ' pathZ=' + wz);
 
 group('交叉关：z 由 wp 决定（桥两侧取不同层）');
-const scE = assembleScene(LEVELS[2], view, 777);
+const scE = assembleScene(LEVELS.find(function (l) { return l.id === 'cross-return'; }), view, 777);
 const wpZ0 = scE.path.sAtU(0.30);
 const wpZ1 = scE.path.sAtU(0.85);
 const pz0 = beadPos(scE.path, scE.rails.spawn, wpZ0);
@@ -175,7 +175,7 @@ check('z=0 区段的球带 z=0', pz0.z === 0, 'z=' + pz0.z);
 check('z=1 区段的球带 z=1（桥上层）', pz1.z === 1, 'z=' + pz1.z);
 check('并入中的球也用同一套 z 规则（不是硬编码空中层）',
   (function () {
-    const sc = assembleScene(LEVELS[2], view, 778);
+    const sc = assembleScene(LEVELS.find(function (l) { return l.id === 'cross-return'; }), view, 778);
     sc.stopAdding = true;
     const i = 3;
     sc.chain.balls[i].wp = wpZ1;

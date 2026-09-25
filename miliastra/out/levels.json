@@ -2,8 +2,8 @@
   "source": "src/levels.js",
   "counts": {
     "tutorials": 7,
-    "core": 4,
-    "total": 11
+    "core": 3,
+    "total": 10
   },
   "levels": [
     {
@@ -12,7 +12,7 @@
       "short": "配对",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": 0.75,
       "innerRatio": null,
       "prefill": 12,
@@ -37,7 +37,7 @@
       "short": "三的倍数",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": 0.75,
       "innerRatio": null,
       "prefill": null,
@@ -62,7 +62,7 @@
       "short": "配错的代价",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": 0.75,
       "innerRatio": null,
       "prefill": null,
@@ -88,7 +88,7 @@
       "short": "加球",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": 0.75,
       "innerRatio": null,
       "prefill": 12,
@@ -117,7 +117,7 @@
       "short": "死球",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": 0.75,
       "innerRatio": null,
       "prefill": null,
@@ -146,7 +146,7 @@
       "short": "洞穴",
       "spineKind": 0,
       "layersFromJunction": false,
-      "railOrder": "spawn-outer",
+      "railOrder": "spawn-inner",
       "turns": null,
       "innerRatio": null,
       "prefill": null,
@@ -191,28 +191,6 @@
       "hint": [
         "把前面学的都用上：反色配对、凑 3 的倍数、别去配 1-间隔的那颗。"
       ]
-    },
-    {
-      "id": "spiral-outer",
-      "name": "螺旋 · 出球道在外",
-      "short": "螺旋·外",
-      "spineKind": 0,
-      "layersFromJunction": false,
-      "railOrder": "spawn-outer",
-      "turns": null,
-      "innerRatio": null,
-      "prefill": 14,
-      "ballBudget": 48,
-      "scoreTarget": null,
-      "still": false,
-      "centerChain": false,
-      "noClear": false,
-      "goal": null,
-      "speed": null,
-      "startWpFrac": null,
-      "bases": null,
-      "script": null,
-      "hint": null
     },
     {
       "id": "spiral-inner",

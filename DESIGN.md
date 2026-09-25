@@ -3438,11 +3438,11 @@ ok  整个界面没有任何文案泄漏 Infinity / NaN / undefined / null
 燃烧 3 秒 / 0.25 秒一跳、草原核 6 秒 / 上限 5 个、护盾上限 3、反应分 10、
 连锁深度上限 4。
 
-实测（`tools/probe-play.mjs` + `ZUMA_MODE=seven`，4 关 × 3 种子）：
+实测（`tools/probe-play.mjs` + `ZUMA_MODE=seven`，4 关 × 3 种子；⚠ 现在只剩 3 个正式关，见 62.4 末尾的变更注）：
 
 `
 关卡           匹配模式        七球模式                    反应次数
-spiral-outer   30.8s clear     26.9~43.3s  clear           41~51
+（spiral-outer 已于 2026-09-25 删除，见 §关卡表下方注）
 spiral-inner   30.1s clear     32.2~39.9s  clear           43~56
 cross-return   40.2s clear     48.4~54.3s  clear           58~63
 endless        30.1s score     7.7~22.2s   score           28~34
@@ -3720,7 +3720,7 @@ RNA 提供「语法与含义」  ：三联体密码子    —— 决定配完之
 **打包器只认单行 import**：我把 `elements.js` 的 import 折成两行 ->
 build 直接抛「仍有未处理的 import」✓ 这个守卫就是为这件事写的 ✓
 
-实测（`tools/probe-play.mjs` + `ZUMA_MODE=seven`，4 关 × 3 种子）：
+实测（`tools/probe-play.mjs` + `ZUMA_MODE=seven`，4 关 × 3 种子；⚠ 现在只剩 3 个正式关，见 62.4 末尾的变更注）：
 
 `
 12/12 通关 · 用时 30~49 秒 · 反应 28~63 次 · 分数 770~1290
@@ -3932,6 +3932,14 @@ turns 1.0 -> L=1704 (装 43 颗)    turns 1.9 -> L=3204 (装 81 颗)
 t1~t4   1292（静止关，见 §63）      spiral-outer  2354
 t8      1776                        cross-return  4357（另一种骨架，未改，见 62.4）
 `
+
+> ★ **2026-09-25 关卡表变更（奇匠决定）**：删掉正式关 `spiral-outer`（"螺旋 · 出球道在外"）——
+> 原话是"**外螺旋是伪命题**"。同时**新手关里所有 `railOrder: 'spawn-outer'` 全部换成 `'spawn-inner'`**，
+> 于是"出球道在外"这种布局在整个游戏里不再出现（`spawn-outer` 只剩 `cross-return` / `endless` 在用）。
+> 影响面（均已同步）：`src/levels.js`、`tools/test-tutorial.mjs` 的 LEVELS 断言、`tools/smoke.mjs` 的菜单条目数、
+> `tools/test-{geometry,insert}.mjs` 里按数字下标取"交叉关"的三处（已改成按 id 查）、
+> 导出物 `miliastra/lua/src/levels_data.lua`、手册与本文档的关卡编号。
+> ⚠ 教训：**测试里别按数字下标取关卡**（`LEVELS[2]` 这种删一关就全错位）—— 按 `id` 查。
 
 ## 63. 静止练习关：①~④ 连轨道都没有
 

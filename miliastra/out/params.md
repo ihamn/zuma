@@ -90,7 +90,7 @@
 
 ## 关卡
 
-新手关 7 + 核心关 4 = 11 关，逐关数据见 paths.md / paths.json。
+新手关 7 + 核心关 3 = 10 关，逐关数据见 paths.md / paths.json。
 
 ## 模式
 
