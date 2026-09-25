@@ -224,20 +224,27 @@ do
     local ratio = shown.sizeDeltaX / ball.sizeDeltaX
     H.ok(ratio < 1.4, '★ 光晕直径 / 球直径 = ' .. string.format('%.2f', ratio)
       .. '（必须 < 1.4；2.1 就是"球变大了"那个 bug）')
-    -- 本体是**绝对值 +3**（不是比例）：光晕半径 = 球半径 + 3
-    local want = (ball.sizeDeltaX / 2 + 3) * 2
-    H.ok(math.abs(shown.sizeDeltaX - want) < 1.5,
-      '★ 光晕直径 = 球直径 + 6（本体 r+3）：实际 ' .. string.format('%.1f', shown.sizeDeltaX)
-      .. ' 期望 ' .. string.format('%.1f', want))
+    -- ★★ 本体是"球外**一圈细描边**"：半径 = r + 线宽，线宽 = max(1.5, r*0.18)。
+    --    我们拿**实心圆放大一圈垫在球下面**来实现，露出的环宽 = 线宽 → 宽度完全可控。
+    --    （用"空心圆素材画环"那条路走不通：环的粗细由素材决定，拉大就跟着变粗 = "球变大了"。）
+    local ballR = ball.sizeDeltaX / 2
+    local stroke = math.max(1.5, ballR * 0.18)
+    local want = (ballR + stroke) * 2
+    H.ok(math.abs(shown.sizeDeltaX - want) < 1.0,
+      '★ 光晕直径 = (球半径 + 线宽)×2 = ' .. string.format('%.1f', want)
+      .. '，实际 ' .. string.format('%.1f', shown.sizeDeltaX))
+    H.ok(stroke <= 4,
+      '★ 描边线宽 ' .. string.format('%.2f', stroke) .. 'px（细描边；粗了就像"球变大"）')
   end
 
-  -- ★ 副轨绑定球**也要描边**（本体 glowColor 为空 → 白色），半径同样是 r+3
+  -- ★ 副轨绑定球**也要描边**（本体 glowColor 为空 → 白色），同样是"球半径 + 线宽"
   local eh = GAME.ui.halo[GAME.ui.haloHalf + 1]
   H.ok(eh ~= nil, '★ 副轨描边控件存在（halo 池是 2n）')
   H.eq(eh.visible, true, '★ 绑定小球的描边画出来了')
   local e1 = elim[1]
-  H.ok(math.abs(eh.sizeDeltaX - (e1.r + 3) * 2) < 1.5,
-    '★ 副轨描边直径 = (r+3)*2 = ' .. string.format('%.1f', (e1.r + 3) * 2)
+  local eStroke = math.max(1.5, e1.r * 0.18)
+  H.ok(math.abs(eh.sizeDeltaX - (e1.r + eStroke) * 2) < 1.0,
+    '★ 副轨描边直径 = (r + 线宽)×2 = ' .. string.format('%.1f', (e1.r + eStroke) * 2)
     .. '，实际 ' .. string.format('%.1f', eh.sizeDeltaX))
 
   -- ★ 核糖体两颗待发球都要字母（本体 lb(1) / lb(0) 都画）

@@ -2196,9 +2196,10 @@ local V = {
   caveR = 1.5,         -- drawCave：洞穴半径 = mt.R × 1.5
   linkFrom = 0.26,     -- drawPairLink：连线画在 26%~74% 之间
   linkTo = 0.74,
-  haloScale = 1.16,     -- （旧）按比例放大的近似 —— 现在改用 haloPad（本体是**绝对值 +3**）
-  haloPad = 3,          -- 状态光晕 = 球外 **r+3** 处一圈描边（本体 render.js drawBead：
-                        --   `ctx.arc(x, y, r + 3, ...)`、`lineWidth = max(1.5, r * 0.18)`）
+  haloScale = 1.16,     -- （旧）按比例放大的近似 —— 现在用 haloWidth/glowRadius（绝对值）
+  haloPad = 3,          -- （旧）球外 +3 —— 现在按本体线宽算，见 glowRadius
+  haloStrokeK = 0.18,   -- 描边线宽 = max(1.5, r × 0.18)（本体 render.js drawBead 的 glow）
+  haloStrokeMin = 1.5,
   letterScale = 1.15,  -- 球面字母字号 = 球半径 × 1.15
   trackWidthK = 2.3,   -- 轨道路面宽 = 轨半径 × 2.3（盖住珠子）
 }
@@ -2342,6 +2343,16 @@ local function placeBead(ui, c, cx, cy, x, y, r, hex, artId)
   place(ui, c, cx, cy, x, y, d, d, 0)
   setColor(ui, c, hex)
   setImage(ui, c, artId or ui.artAny)
+end
+
+-- ★★ 描边（本体 drawBead 的 glow）**正确的复刻方式**：
+--   本体是 `arc(r + 3)` + `lineWidth = max(1.5, r*0.18)` 的一圈**细描边**。
+--   图片控件没有描边能力 —— 一度改成"用空心圆素材画环"，但**环的粗细由素材决定**，
+--   放大后那圈跟着变粗，看着就是"匹配以后球变大了"（用户三次反馈的就是这个）。
+--   正确做法：**拿实心圆放大一圈、垫在球下面**，露出来的那一圈环宽 = 我们要的线宽。
+--   → 宽度完全可控、和我们手里那张实心圆素材的形状无关。
+local function glowRadius(r)
+  return r + math.max(V.haloStrokeMin, r * V.haloStrokeK)
 end
 
 -- 柔边（发光）：图片控件没有描边，靠 enableSoftEdge 做"糊一圈"的效果
@@ -2745,7 +2756,7 @@ function M.sync(ui, sc, st)
       if ui.halo[i] then
         if ui.fancy ~= 0 and ui.glowOn ~= 0 and b.pairGlow then
           -- ★ 用**空心圆**素材画成细环（实心圆画 2.1× 会像"球变大了" —— 用户一眼看出不对）
-          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r + V.haloPad, b.pairGlow .. 'e6', ui.artRing)
+        placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, glowRadius(b.r), b.pairGlow, ui.artAny)
         else
           setVisible(ui, ui.halo[i], false)
         end
@@ -2780,7 +2791,7 @@ function M.sync(ui, sc, st)
       -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
       local eh = ui.halo and ui.haloHalf and ui.halo[ui.haloHalf + i]
       if eh and ui.fancy ~= 0 and ui.glowOn ~= 0 then
-        placeBead(ui, eh, cx, cy, e.x, e.y, e.r + V.haloPad, '#ffffff80', ui.artRing)  -- 本体是 rgba(255,255,255,0.5)
+        placeBead(ui, eh, cx, cy, e.x, e.y, glowRadius(e.r), '#ffffff80', ui.artAny)  -- 本体是 rgba(255,255,255,0.5)
       elseif eh then
         setVisible(ui, eh, false)
       end
@@ -2955,7 +2966,7 @@ function M.sync(ui, sc, st)
     -- ★ 炮口那颗的白色描边（本体那次 drawBead 的 glow 参数是 true）
     local lh = ui.loadedHalo
     if lh and ui.fancy ~= 0 and ui.glowOn ~= 0 then
-      placeBead(ui, lh[1], cx, cy, lx1, ly1, bR + V.haloPad, '#ffffff80', ui.artRing)  -- 本体同样 50%
+      placeBead(ui, lh[1], cx, cy, lx1, ly1, glowRadius(bR), '#ffffff80', ui.artAny)  -- 本体同样 50%
       setVisible(ui, lh[2], false)
     elseif lh then
       setVisible(ui, lh[1], false)
