@@ -250,4 +250,30 @@ do
   H.eq(GAME.ui.artBar, 100003, '★ 棒用 artBar=100003（方图）覆盖默认 100001')
 end
 
+-- ⑯ ★ zoom（移植侧显示旋钮，默认 1 = 照本体）：等比放大 rx/ry/scale，R/r 仍是 √2
+do
+  local h16 = MOCK.newHost({ w = 900, h = 900 })
+  h16.prefabs[1] = 'image'
+  h16.prefabs[2] = 'textbox'
+  h16.prefabs[3] = 'cursorarea'
+  h16.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0 }
+  MOCK.install(h16)
+  h16.scriptObj.object = h16.root
+  h16.mount(GAME)
+  H.eq(GAME.view.scale, 1, '不填 zoom → 完全照本体的 scale（900x900 时 = 1）')
+
+  local h17 = MOCK.newHost({ w = 900, h = 900 })
+  h17.prefabs[1] = 'image'
+  h17.prefabs[2] = 'textbox'
+  h17.prefabs[3] = 'cursorarea'
+  h17.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0, zoom = 1.4222 }
+  MOCK.install(h17)
+  h17.scriptObj.object = h17.root
+  h17.mount(GAME)
+  H.ok(math.abs(GAME.view.scale - 1.4222) < 1e-4, 'zoom=1.4222 → scale 乘以它：' .. tostring(GAME.view.scale))
+  local mt = GAME.sc.metrics
+  H.ok(math.abs(mt.R / mt.r - math.sqrt(2)) < 1e-6, '★ 放大后 R/r 仍是 √2（规则数值等比缩放）')
+  H.ok(math.abs(mt.R - 19 * 1.4222) < 0.05, '★ 大球 R = 19×1.4222 ≈ 27.0（就是"2:√2"那档）：' .. string.format('%.2f', mt.R))
+end
+
 H.finish()

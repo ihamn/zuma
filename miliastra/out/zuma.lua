@@ -3291,6 +3291,18 @@ function G.OnInit()
   if not ok0 then w, h = 900, 900 end
   G.canvas = { w = w, h = h }
   G.view = CFG.viewFor(w, h)
+  -- ★★ 显示缩放 zoom（**移植侧旋钮，本体没有** → 默认 1 = 完全照本体）。
+  --   用途：只想让整个画面（球/轨道/洞穴）大一点，又不想去编辑器改画布尺寸时，
+  --   填 zoom=1.2 就行。做法是把 rx/ry/scale **一起**乘 —— 于是所有尺寸等比放大，
+  --   R/r 仍是 √2、规则数值一个没动（碰撞/间距都由 mt 推导，等比缩放不改变行为）。
+  --   ★ 更"正统"的做法是改画布：画布 1280×1280 时 base=1280 → scale=1.4222，
+  --     大球 R 19→27.0、小球 r 13.4→19.1（正好就是"2 : √2"），且本体同样视口算出来一模一样。
+  local zoom = tonumber(tostring(param('zoom', '')))
+  if zoom and zoom > 0 and zoom ~= 1 then
+    G.view.rx, G.view.ry, G.view.scale =
+      G.view.rx * zoom, G.view.ry * zoom, G.view.scale * zoom
+    G.zoom = zoom
+  end
   G.diag = param('diag', 0) ~= 0        -- ★ 默认关：屏幕上要和本体一样，不多一个字
   G.teach = param('teach', 0) ~= 0      -- ★ 默认关：教学辅助行（手里该打谁 / 上次命中判定）
   G.error = nil          -- ★ 每次重来都清掉：否则上一次的错误会一直挂在屏幕上（测试抓到的）
@@ -3446,7 +3458,8 @@ function G.boot()
   --   ⚠ 只设尺寸、**不动位置**：位置由编辑器/布局决定，乱设会让整盘偏移。
   do
     local ok, err = pcall(function() root:SetSizeDelta(w, h) end)
-    say('把挂载点尺寸设成画布尺寸（%s x %s）：%s', tostring(w), tostring(h), ok and 'ok' or ('失败 ' .. tostring(err)))
+    if G.zoom then say('显示缩放 zoom=%s（等比放大，规则数值未动）', tostring(G.zoom)) end
+  say('把挂载点尺寸设成画布尺寸（%s x %s）：%s', tostring(w), tostring(h), ok and 'ok' or ('失败 ' .. tostring(err)))
   end
   say('挂载点 = %s', tostring(root))
 

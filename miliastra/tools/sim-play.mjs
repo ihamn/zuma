@@ -85,6 +85,8 @@ const mounted = rt.mountScript({
   params: {
     ballPrefab: 1, shotPrefab: 1, hudPrefab: 2, cursorPrefab: 3, playPrefab: 4,
     levelIndex: level, diag: 1, autoNext: 0, ballCount: 96, shotCount: 8,
+    // 想试显示缩放（移植侧旋钮）就传 --zoom=1.42；不传 = 照本体
+    ...(function () { const z = flag('zoom', ''); return z ? { zoom: Number(z) } : {}; })(),
   },
 })
 
