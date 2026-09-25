@@ -3764,15 +3764,9 @@ function G.boot()
       say('核糖体待发碱基：%s / %s', tostring(rb.loaded[1]), tostring(rb.loaded[2]))
     end
     say('本关允许的碱基：%s', table.concat(G.sc and G.sc.bases or {}, ' '))
-    -- ★ 待发球字母自检：真机上"看不到字母"时，这行能立刻分清是"没设"还是"被盖住/字号太小"
-    local ui = G.ui
-    if ui and ui.loadedLetter then
-      for k = 1, 2 do
-        local lc = ui.loadedLetter[k]
-        say('待发球字母 %s：文字=%s 可见=%s 字号=%s', tostring(k), tostring(lc and lc.text),
-          tostring(lc and lc.visible), tostring(lc and lc.fontSize))
-      end
-    end
+    -- ★ 待发球自检放到**第一次 UI.sync 之后**（见下面的 ⑨）—— 原来写在这里，
+    --   而字母的 .text 是在 UI.sync 里才写进去的 ⇒ 这行**永远报"文字=空"**，
+    --   测的不是真状态（用户就是这样被我误导了一轮）。
   end
   return G
 end
@@ -3790,6 +3784,23 @@ function G.startLevel(idx)
   G.resultTimer = 0
   -- ★ 立刻同步一次：否则换关后的第一帧里，画面上还留着上一关的球
   if G.ui then UI.sync(G.ui, G.sc, G.syncState()) end
+  -- ⑨ ★ 待发球自检：**必须在上面这次 sync 之后**（字母的 .text 是 sync 里写的）。
+  --   三项一起报，才能分清到底是哪一环：源碱基有没有 → 文字写进去没 → 可见/字号对不对。
+  do
+    local rb = G.sc and G.sc.rb
+    local b1 = rb and rb.loaded and rb.loaded[1]
+    local b2 = rb and rb.loaded and rb.loaded[2]
+    say('待发球自检：源碱基 1=%s 2=%s', tostring(b1), tostring(b2))
+    local ui = G.ui
+    if ui and ui.loadedLetter then
+      for k = 1, 2 do
+        local lc = ui.loadedLetter[k]
+        say('  字母 %s：文字=%s 可见=%s 字号=%s 位置=(%s,%s)', tostring(k),
+          lc and tostring(lc.text), lc and tostring(lc.visible), lc and tostring(lc.fontSize),
+          lc and string.format('%.0f', lc.anchoredPositionX), lc and string.format('%.0f', lc.anchoredPositionY))
+      end
+    end
+  end
   return G.sc
 end
 
