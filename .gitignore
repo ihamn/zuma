@@ -41,3 +41,6 @@ miliastra/out/rib-*.json
 miliastra/out/rib-*.png
 miliastra/out/probe-*.json
 
+miliastra/out/menu.json
+miliastra/out/menu.png
+

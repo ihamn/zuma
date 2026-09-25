@@ -3110,6 +3110,15 @@ syncMenu = function(ui, sc, st)
     return
   end
 
+  -- ★★ 菜单态**不画局内 HUD**（本体 §61：菜单是独立一屏，HUD 不该从后面透出来）。
+  --   HUD 的显示是 M.sync 里的 text() 每帧设的，所以这里在它之后统一收掉；
+  --   回到 playing 的下一帧 text() 会自己再显示出来（不用手动恢复）。
+  for i = 1, #ui.hudOrder do
+    local h = ui.hud[ui.hudOrder[i]]
+    if h then setVisible(ui, h, false) end
+  end
+  if ui.caveLabel then setVisible(ui, ui.caveLabel, false) end
+
   local L = st.menuLayout
   if not L then return end
 
