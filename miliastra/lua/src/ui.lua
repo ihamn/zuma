@@ -654,10 +654,17 @@ local function syncEgg(ui, sc, st)
   end
   if not inEgg then return end
 
+  -- ★ 彩蛋屏要把**局内 HUD 全藏掉**（分数/连读/命/模式/提示都不该出现在交易所里）。
+  --   syncMenu 在本函数**之前**跑，所以这里覆盖它、且只在彩蛋屏生效。
+  for i = 1, #ui.hudOrder do setVisible(ui, ui.hud[ui.hudOrder[i]], false) end
+  if ui.menu and ui.menu.playBtn then setVisible(ui, ui.menu.playBtn, false) end
+  if ui.menu and ui.menu.playLabel then setVisible(ui, ui.menu.playLabel, false) end
+
   -- 暗幕铺满
   place(ui, e.scrim, cx, cy, W * 0.5, H * 0.5, W, H, 0)
-  -- 标题
+  -- 标题（⚠ 文字必须在这里赋值 —— 建控件时不赋值就一直是空的，出图时才发现标题不见了）
   place(ui, e.title, cx, cy, W * 0.5, H * 0.16, math.min(W - 80, 760 * s), 64 * s, 0)
+  e.title.text = '璃月黄金交易所'
   e.title.fontSize = math.max(20, math.floor(34 * s))
   e.title.fontColor = hexColor('#e6d3a3')
   -- 五行数据
