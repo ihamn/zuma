@@ -516,6 +516,39 @@ function M.create(opts)
     ui.menu = m
   end
 
+  -- ⑭ 彩蛋「璃月黄金交易所」（奇匠：一个开始按键 + 一个面板）
+  --   规则逻辑在 egg.lua（纯逻辑、可单测）；这里只负责"画出来 + 接点击"。
+  --   控件：暗幕 1 + 标题 1 + 数据 5 + 按钮(图+字) 12 + 菜单入口(图+字) 2 = 21 个
+  do
+    local e = {}
+    e.scrim = build(ballPrefab, '彩蛋暗幕控件', 1)
+    setColor(ui, e.scrim, '#05070df0')
+    softEdge(e.scrim, false, 0)
+    local function mk(what, i)
+      local c = build(hudPrefab, what, i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      c.bgColor = hexColor('#00000000')
+      return c
+    end
+    e.title = mk('彩蛋标题控件', 1)
+    e.lines = {}
+    for i = 1, 5 do e.lines[i] = mk('彩蛋数据控件', i) end
+    -- ★★ 复用菜单的按钮池（12 个按钮 + 12 个文字）：
+    --   彩蛋屏和菜单**永远不会同屏** ⇒ 没必要再建一套（那样 1008 会超平台上限 1000 ✗）。
+    --   syncEgg 在 syncMenu **之后**跑，所以哪怕 syncMenu 把它们藏了，这一帧也会被重新摆好 ✓。
+    e.btn = ui.menu.btn
+    e.btnLabel = ui.menu.btnLabel
+    -- ★ 奇匠要的"彩蛋开始按键"：摆在菜单里（右下角 —— 左上角是平台自己的按键，见 §42）
+    e.entry = build(ballPrefab, '彩蛋入口控件', 1)
+    softEdge(e.entry, false, 0)
+    e.entryLabel = mk('彩蛋入口文字控件', 1)
+    e.entryLabel.text = '◈ 交易所'
+    e.ready = false
+    ui.egg = e
+  end
+
   -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
   local total = M.count(ui)
   if total > 900 then
@@ -581,6 +614,84 @@ local function placeTrack(ui, sc)
     end
   end
   for i = seg + 1, #ui.track do setVisible(ui, ui.track[i], false) end
+end
+
+-- ==================== 彩蛋：璃月黄金交易所（绘制） ====================
+-- 逻辑全在 egg.lua；这里只把 st.egg 的字段摆到屏幕上，并接好 6 个按钮的位置。
+-- 按钮：1 买1g / 2 卖1g / 3 借1万 / 4 借100g / 5 打工 / 6 返回
+local function syncEgg(ui, sc, st)
+  local e = ui.egg
+  if not e then return end
+  local inMenu = (st.screen == 'menu')
+  local inEgg = (st.screen == 'egg')
+  local cx, cy = sc.view.cx, sc.view.cy
+  local W, H, s = sc.view.w, sc.view.h, sc.metrics.scale
+
+  -- ★ 菜单里那颗"彩蛋开始按键"：右下角（左上被平台占了）
+  if e.entry then
+    local x = W - 130 * s
+    local y = H - 62 * s
+    place(ui, e.entry, cx, cy, x, y, 208 * s, 66 * s, 0)
+    setVisible(ui, e.entry, inMenu)
+    setColor(ui, e.entry, '#1b2436')
+    place(ui, e.entryLabel, cx, cy, x, y, 208 * s, 48 * s, 0)
+    setVisible(ui, e.entryLabel, inMenu)
+    e.entryLabel.fontSize = math.max(14, math.floor(20 * s))
+    e.entryLabel.fontColor = hexColor('#cfe0ff')
+  end
+
+  setVisible(ui, e.scrim, inEgg)
+  setVisible(ui, e.title, inEgg)
+  for i = 1, #e.lines do setVisible(ui, e.lines[i], inEgg) end
+  for i = 1, #e.btn do
+    setVisible(ui, e.btn[i], inEgg)
+    setVisible(ui, e.btnLabel[i], inEgg)
+  end
+  if not inEgg then return end
+
+  -- 暗幕铺满
+  place(ui, e.scrim, cx, cy, W * 0.5, H * 0.5, W, H, 0)
+  -- 标题
+  place(ui, e.title, cx, cy, W * 0.5, H * 0.16, math.min(W - 80, 760 * s), 64 * s, 0)
+  e.title.fontSize = math.max(20, math.floor(34 * s))
+  e.title.fontColor = hexColor('#e6d3a3')
+  -- 五行数据
+  local st2 = st.egg or {}
+  local rows = {
+    '金价   ' .. string.format('%.1f', st2.price or 0) .. ' 元/g   ' ..
+      (st2.lastDelta and string.format('(%+.1f)', st2.lastDelta) or ''),
+    '现金   ' .. string.format('%.0f', st2.cash or 0) .. ' 元      持仓   ' ..
+      string.format('%.0f', st2.gold or 0) .. ' g',
+    '欠款   ' .. string.format('%.0f', st2.debtCash or 0) .. ' 元     金欠   ' ..
+      string.format('%.1f', st2.debtGold or 0) .. ' g',
+    '利息   ' .. string.format('%.0f', st2.interestPaid or 0) .. ' 元（30 秒 +10%，复利）',
+    (st2.tWork and st2.tWork > 0)
+      and ('打工中… 剩 ' .. string.format('%.0f', st2.tWork) .. ' 秒')
+      or '（打工：仅欠款时可用，30 秒，还 20%）',
+  }
+  for i = 1, 5 do
+    local c = e.lines[i]
+    place(ui, c, cx, cy, W * 0.5, H * 0.24 + (i - 1) * 46 * s, math.min(W - 120, 820 * s), 42 * s, 0)
+    c.text = rows[i]
+    c.fontSize = math.max(13, math.floor(19 * s))
+    c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
+  end
+  -- 六个按钮：两行三列
+  local labels = { '买入 1g', '卖出 1g', '借 1 万', '借 100g', '打 工', '返 回' }
+  local bw, bh = 190 * s, 62 * s
+  for i = 1, 6 do
+    local col = (i - 1) % 3
+    local row = math.floor((i - 1) / 3)
+    local x = W * 0.5 + (col - 1) * (bw + 26 * s)
+    local y = H * 0.66 + row * (bh + 22 * s)
+    place(ui, e.btn[i], cx, cy, x, y, bw, bh, 0)
+    setColor(ui, e.btn[i], (i == 6) and '#20242e' or '#2b2417')
+    place(ui, e.btnLabel[i], cx, cy, x, y, bw, 44 * s, 0)
+    e.btnLabel[i].text = labels[i]
+    e.btnLabel[i].fontSize = math.max(13, math.floor(19 * s))
+    e.btnLabel[i].fontColor = hexColor((i == 6) and '#c8d4e6' or '#f0dfae')
+  end
+  e.ready = true
 end
 
 -- ==================== 每帧同步 ====================
@@ -985,6 +1096,7 @@ function M.sync(ui, sc, st)
 
   -- ---- 开始菜单（§61）：局内只画左下角那个"回菜单"按钮；菜单态画整屏 ----
   syncMenu(ui, sc, st)
+  syncEgg(ui, sc, st)
   return ui
 end
 
@@ -1112,6 +1224,7 @@ function M.count(ui)
     + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
     + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
+    + (ui.egg and 7 or 0)                   -- 彩蛋图层（暗幕1 + 标题1 + 数据5；按钮复用菜单池 ⇒ 不计）
     + (ui.menu and (6 + #ui.menu.groups + #ui.menu.btn * 2 + 2) or 0)   -- 菜单图层（暗幕/标题/副标题/说明/分组/按钮+文字/回菜单按钮+文字）
   return n
 end

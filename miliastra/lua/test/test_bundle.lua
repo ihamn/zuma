@@ -16,7 +16,7 @@ local Z = chunk()
 H.eq(type(Z), 'table', '返回值是门面表')
 local n = 0
 for _ in pairs(Z) do n = n + 1 end
-H.eq(n, 15, '15 个模块（多了 menu.lua：开始菜单布局）')
+H.eq(n, 16, '16 个模块（多了 menu.lua：开始菜单布局；再多了 egg.lua：彩蛋「璃月黄金交易所」）')
 H.eq(type(Z.game), 'table', '有 game 模块')
 H.eq(type(Z.board), 'table', '有 board 模块')
 H.eq(type(Z.ui), 'table', '有 ui 模块')
