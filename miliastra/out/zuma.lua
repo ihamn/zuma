@@ -2112,6 +2112,9 @@ M.LEVELS = {
   },
 }
 
+-- 前多少个是新手关（本体 TUTORIALS.length）；菜单按它分组
+M.TUTORIAL_COUNT = 7
+
 function M.byId(id)
   for i = 1, #M.LEVELS do
     if M.LEVELS[i].id == id then return M.LEVELS[i] end
@@ -2161,6 +2164,7 @@ __M["ui"] = function()
 --   （`game.Tween` 仍在假宿主/真机上可用，将来要做"编辑期摆好的动效"再用。）
 
 local CFG = require('config')
+local MENU = require('menu')     -- 菜单布局（本体 config.js 的 1:1 移植，进对拍）
 
 local M = {}
 
@@ -2586,6 +2590,43 @@ function M.create(opts)
     ui.hudOrder[#ui.hudOrder + 1] = spec.key
   end
 
+  -- ⑬ 开始菜单（DESIGN.md §61 / 本体 render.js drawMenu + drawMenuButton）
+  --   ⚠ 必须在 create() 里建：真机契约是"只有 OnStart 能建控件"（见 HANDOFF §10）。
+  --   预算：暗幕 1 + 标题 1 + 副标题 1 + 分组 2 + 按钮 10 + 按钮文字 10 + 底部说明 1
+  --         + 局内"菜单"按钮 1 + 它的文字 1 = **28 个**（M.count 里算进去了）。
+  do
+    local m = {}
+    m.scrim = build(ballPrefab, '菜单暗幕控件', 1)
+    setColor(ui, m.scrim, '#060a12de')              -- 本体 rgba(6,10,18,0.87)
+    softEdge(m.scrim, false, 0)
+    local function mkText(what, i)
+      local c = build(hudPrefab, what, i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      c.bgColor = hexColor('#00000000')
+      return c
+    end
+    m.title = mkText('菜单标题控件', 1)
+    m.subtitle = mkText('菜单副标题控件', 1)
+    m.footer = mkText('菜单说明控件', 1)
+    m.groups = { mkText('菜单分组控件', 1), mkText('菜单分组控件', 2) }
+    m.btn = {}
+    m.btnLabel = {}
+    for i = 1, 10 do
+      m.btn[i] = build(ballPrefab, '菜单按钮控件', i)
+      softEdge(m.btn[i], false, 0)
+      m.btnLabel[i] = mkText('菜单按钮文字控件', i)
+    end
+    -- 局内左下角「回菜单」按钮（本体 §61：手机没有 Esc，这是离开一关的唯一出路）
+    m.playBtn = build(ballPrefab, '回菜单按钮控件', 1)
+    softEdge(m.playBtn, false, 0)
+    m.playLabel = mkText('回菜单文字控件', 1)
+    m.playLabel.text = '菜单'
+    m.ready = false                                      -- 位置/文字要不要重算（换关/换画布尺寸时）
+    ui.menu = m
+  end
+
   -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
   local total = M.count(ui)
   if total > 900 then
@@ -2652,6 +2693,8 @@ end
 -- ==================== 每帧同步 ====================
 
 -- st（可选）: { dt, events, hintLines = {..}, mode = 'match'|'insert' }
+local syncMenu   -- 前置声明：定义在本函数之后（菜单图层）
+
 function M.sync(ui, sc, st)
   st = st or {}
   local view = sc.view
@@ -3026,7 +3069,112 @@ function M.sync(ui, sc, st)
   if ui.hud.hint then
     text('hint', st.hintLines and table.concat(st.hintLines, '\n') or '')
   end
+
+  -- ---- 开始菜单（§61）：局内只画左下角那个"回菜单"按钮；菜单态画整屏 ----
+  syncMenu(ui, sc, st)
   return ui
+end
+
+-- ==================== 开始菜单（§61）====================
+-- 布局**不在**这里算：game.lua 用 menu.lua 算好（那套是本体 config.js 的 1:1 移植、进对拍），
+-- 通过 st.menuLayout 传进来。这里只负责画。
+syncMenu = function(ui, sc, st)
+  local m = ui.menu
+  if not m then return end
+  local view, mt = sc.view, sc.metrics
+  local s = mt.scale or 1
+  local cx = view.cx
+  local inMenu = (st.screen == 'menu')
+
+  -- 局内左下角「回菜单」按钮（本体 render.js drawMenuButton）
+  local pb = MENU.playButtonRect(view, mt)
+  local showPb = not inMenu
+  place(ui, m.playBtn, cx, view.cy, pb.x, pb.y, pb.r * 2, pb.r * 2, 0)
+  setColor(ui, m.playBtn, '#0c1422db')
+  setVisible(ui, m.playBtn, showPb)
+  place(ui, m.playLabel, cx, view.cy, pb.x, pb.y, pb.r * 2.4, pb.r * 2.4, 0)
+  m.playLabel.fontSize = math.max(10, math.floor(12 * s + 0.5))
+  m.playLabel.fontColor = hexColor('#e2eefff2')
+  setVisible(ui, m.playLabel, showPb)
+
+  if not inMenu then
+    setVisible(ui, m.scrim, false)
+    setVisible(ui, m.title, false)
+    setVisible(ui, m.subtitle, false)
+    setVisible(ui, m.footer, false)
+    for i = 1, #m.groups do setVisible(ui, m.groups[i], false) end
+    for i = 1, #m.btn do
+      setVisible(ui, m.btn[i], false)
+      setVisible(ui, m.btnLabel[i], false)
+    end
+    return
+  end
+
+  local L = st.menuLayout
+  if not L then return end
+
+  -- 暗幕（本体 rgba(6,10,18,0.87)）
+  place(ui, m.scrim, cx, view.cy, cx, view.cy, view.w, view.h, 0)
+  setColor(ui, m.scrim, '#060a12de')
+  setVisible(ui, m.scrim, true)
+
+  -- 标题 + 副标题（本体 drawMenu 的文案与字号）
+  local tw = view.w
+  place(ui, m.title, cx, view.cy, cx, L.titleY, tw, math.max(40, 60 * s), 0)
+  m.title.text = 'RNA 祖玛'
+  m.title.fontSize = math.max(26, math.floor(44 * s + 0.5))
+  m.title.fontColor = hexColor('#e8f2ff')
+  setVisible(ui, m.title, true)
+
+  place(ui, m.subtitle, cx, view.cy, cx, L.titleY + math.max(20, 30 * s), tw, 30 * s, 0)
+  m.subtitle.text = '反色配对 · 凑三颗 · 读出 mRNA'
+  m.subtitle.fontSize = math.max(11, math.floor(15 * s + 0.5))
+  m.subtitle.fontColor = hexColor('#a0c3ebf2')
+  setVisible(ui, m.subtitle, true)
+
+  -- 分组标题（左对齐在 x0）
+  for i = 1, #m.groups do
+    local g = m.groups[i]
+    local rec = L.groups[i]
+    if rec then
+      place(ui, g, cx, view.cy, L.x0 + L.innerW / 2, rec.y + 8 * s, L.innerW, 20 * s, 0)
+      g.horizontalAlignment = Enum.TextHorizontalAlignment.Left
+      g.text = rec.name
+      g.fontSize = math.max(11, math.floor(14 * s + 0.5))
+      g.fontColor = hexColor('#96c8f0e6')
+      setVisible(ui, g, true)
+    else
+      setVisible(ui, g, false)
+    end
+  end
+
+  -- 关卡按钮（本体：新手关偏青、核心关偏蓝；⚠ 图片控件画不了描边，所以只有填充色）
+  for i = 1, #m.btn do
+    local b = L.buttons[i]
+    local btn, lab = m.btn[i], m.btnLabel[i]
+    if b then
+      local tut = (b.item.group == '新手关')
+      place(ui, btn, cx, view.cy, b.x + b.w / 2, b.y + b.h / 2, b.w, b.h, 0)
+      setColor(ui, btn, tut and '#1a3c3af2' or '#162032f2')
+      setVisible(ui, btn, true)
+      place(ui, lab, cx, view.cy, b.x + b.w / 2, b.y + b.h / 2, b.w, b.h, 0)
+      lab.text = b.item.label or ''
+      lab.fontSize = math.max(11, math.floor(15 * s + 0.5))
+      lab.fontColor = hexColor('#eaf4ff')
+      setVisible(ui, lab, true)
+    else
+      setVisible(ui, btn, false)
+      setVisible(ui, lab, false)
+    end
+  end
+
+  -- 底部操作说明（★ 本体那句写的是 "Esc 回菜单"；移植侧没有 Esc，
+  --   离开一关靠左下角实体按钮 —— 所以这里按**移植侧真实操作**改写过，别照抄本体）
+  place(ui, m.footer, cx, view.cy, cx, L.footerY, view.w, 30 * s, 0)
+  m.footer.text = '点关卡开始 · 点画面发射 · 点核糖体换珠 · 点右下角切模式 · 点左下角回菜单'
+  m.footer.fontSize = math.max(10, math.floor(12 * s + 0.5))
+  m.footer.fontColor = hexColor('#96b4d7e6')
+  setVisible(ui, m.footer, true)
 end
 
 -- ui 一共建了多少个控件（诊断行 + 预算自检用）
@@ -3036,6 +3184,7 @@ function M.count(ui)
     + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
     + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
+    + (ui.menu and (6 + #ui.menu.groups + #ui.menu.btn * 2 + 2) or 0)   -- 菜单图层（暗幕/标题/副标题/说明/分组/按钮+文字/回菜单按钮+文字）
   return n
 end
 
@@ -3098,6 +3247,13 @@ function M.create(opts)
     area:AddCursorEventListener(Enum.CursorEventType.CursorClick, function(d)
       inp.pending = inp.pending + 1
       inp.stats.clicks = inp.stats.clicks + 1
+      -- ★ 菜单/按钮要用"点在哪"。官方 API 直接给光标坐标（左下原点、y 向上），
+      --   这里立刻换算成**棋盘坐标**存下来 —— 不依赖回调参数 d 的形状（那个没文档保证）。
+      local ok, gx, gy = pcall(game.GetCursorUIPos)
+      if ok and type(gx) == 'number' and type(gy) == 'number' then
+        local bx, by = M.toBoard(inp.canvas, gx, gy)
+        inp.clickX, inp.clickY = bx, by
+      end
     end)
   end
 
@@ -3189,6 +3345,7 @@ end
 -- 开火意图被消费掉之后调用
 function M.consume(inp)
   inp.pending = 0
+  inp.clickX, inp.clickY = nil, nil
 end
 
 return M
@@ -3231,6 +3388,7 @@ local CFG = require('config')
 local BOARD = require('board')
 local RB = require('ribosome')
 local UI = require('ui')
+local MENU = require('menu')       -- 开始菜单（§61）：布局是本体 config.js 的 1:1 移植
 local INPUT = require('input')
 local LEVELS_DATA = require('levels_data')
 
@@ -3770,6 +3928,16 @@ function G.boot()
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
 
+  -- ★★ §61 开局进菜单（本体 main.js：G.screen 初值就是 'menu'）。
+  --   刚装配好的这一关就**当菜单背景板**用（本体也是这么省的：不另画美术），
+  --   菜单态里 tick 不推进盘面，所以它是静止的。
+  --   levelIndex 那个脚本变量仍然有效：想**跳过菜单**直接进某一关，就填 levelIndex=8（配 skipMenu=1）。
+  G.menuItems = MENU.items(LEVELS_DATA.LEVELS, LEVELS_DATA.TUTORIAL_COUNT or 0)
+  G.screen = (param('skipMenu', 0) == 1) and 'playing' or 'menu'
+  say('开始菜单：%d 个条目（新手关 %d + 核心关 %d）；当前屏幕=%s（skipMenu=1 可跳过菜单）',
+    #G.menuItems, tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0,
+    #G.menuItems - (tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0), tostring(G.screen))
+
   -- ★ 洞穴状态（回答"洞穴看不到"这类问题：是本体规则、还是位置/图层）
   --   本体 render.js：`if (!(G.sc && G.sc.still)) drawCave(...)` —— **静止关本来就不画洞穴**。
   do
@@ -3902,6 +4070,26 @@ end
 function G.tick(dt)
   if not G.sc then return end
 
+  -- ★★ §61 菜单态：**不推进盘面**（本体 main.js update() 的早期 return）。
+  --   否则玩家在菜单里挑关卡时，链子会自己往洞口爬，点进去已经快输了。
+  if G.screen == 'menu' then
+    -- 只判菜单按钮；点别处什么都不做（尤其**不能发射**）
+    if (G.input.pending or 0) > 0 then
+      local mx, my = G.input.clickX, G.input.clickY
+      INPUT.consume(G.input)
+      if mx then
+        local L = MENU.layout(G.view, G.sc.metrics, G.menuItems)
+        local item = MENU.pick(L, mx, my)
+        if item then
+          G.startLevel(item.index + 1)        -- 本体 0 基 / 移植侧 1 基
+          return
+        end
+      end
+    end
+    UI.sync(G.ui, G.sc, G.syncState(dt))
+    return
+  end
+
   -- 结算画面：只等按键或超时，不再推进盘面
   if G.screen == 'won' or G.screen == 'lost' then
     G.resultTimer = G.resultTimer + dt
@@ -3937,6 +4125,18 @@ function G.tick(dt)
   if G.input.wantMode then
     G.input.wantMode = false
     BOARD.toggleMode(G.sc)
+  end
+
+  -- ★ 左下角「回菜单」按钮（本体 §61：手机上没 Esc，这是离开一关的唯一出路）。
+  --   判定要在**开火之前**，否则点按钮会顺带打一枪。
+  if (G.input.pending or 0) > 0 and G.input.clickX then
+    local mb = MENU.playButtonRect(G.view, G.sc.metrics)
+    if MENU.hitButton(mb, G.input.clickX, G.input.clickY, 1.3) then
+      INPUT.consume(G.input)
+      G.screen = 'menu'
+      UI.sync(G.ui, G.sc, G.syncState(dt))
+      return
+    end
   end
 
   if G.input.firing then
@@ -4012,6 +4212,9 @@ function G.syncState(dt)
     hintLines = lines,
     lastHit = G.lastHit,
     mate = G.mateText and G.mateText() or nil,
+    -- ★ 菜单：UI 层要知道"现在是不是菜单态"，以及按钮画在哪（布局在 menu.lua 里算，进对拍）
+    screen = G.screen,
+    menuLayout = MENU.layout(G.view, G.sc and G.sc.metrics or CFG.metrics(1), G.menuItems or {}),
   }
 end
 
@@ -4045,6 +4248,112 @@ end
 return G
 end
 
+-- ---------------- menu ----------------
+__M["menu"] = function()
+-- 开始菜单（DESIGN.md §61）—— src/config.js 的 menuItems / menuLayout / menuButtonRect 的 Lua 移植。
+--
+-- 为什么单独一个模块：这三样是**纯计算**（条目表、按钮矩形、命中判定），
+--   JS 侧和 Lua 侧必须一模一样 —— 所以它们进对拍（parity）当证据，而不是"看着差不多"。
+--   ★ 与本体一一对应：
+--     menuItems      = main.js  rebuild() 里那段 ALL_LEVELS.map(...)
+--     menuLayout     = config.js  menuLayout(view, mt, items)
+--     menuButtonRect = config.js  menuButtonRect(view, mt)   （局内左下角"菜单"按钮）
+
+local CFG = require('config')
+
+local M = {}
+
+-- 菜单条目：新手关用关卡全名，核心关带序号（本体 main.js 原文）
+--   label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name))
+function M.items(levels, tutorialCount)
+  local out = {}
+  for i = 1, #levels do
+    local l = levels[i]
+    local tut = i <= (tutorialCount or 0)
+    local label
+    if tut then
+      label = l.name or l.short
+    else
+      label = tostring(i) .. ' ' .. (l.short or l.name)
+    end
+    out[i] = {
+      index = i - 1,                       -- 本体是 0 基；这里保留 0 基，方便和本体逐值对拍
+      group = tut and '新手关' or '核心关',
+      label = label,
+    }
+  end
+  return out
+end
+
+-- 菜单布局：竖屏（窄）2 列、横屏/桌面 4 列（本体 config.js 原文，逐式照搬）
+--   view: { w, h, cx, cy }   mt: { scale }
+function M.layout(view, mt, items)
+  local s = (mt and mt.scale) or 1
+  local W, H = view.w, view.h
+  local narrow = W < 640
+  local cols = narrow and 2 or 4
+  local pad = math.max(10, 18 * s)
+  local gapX, gapY = 9 * s, 8 * s
+  local innerW = math.min(W - pad * 2, narrow and (440 * s) or (760 * s))
+  local x0 = (W - innerW) / 2
+  local bh = math.max(36, 50 * s)
+  local bw = (innerW - gapX * (cols - 1)) / cols
+  local buttons, groups = {}, {}
+  local y = math.max(76 * s, H * 0.26)
+  local col, last = 0, nil
+  for i = 1, #items do
+    local it = items[i]
+    if it.group ~= last then
+      if last ~= nil then y = y + bh + gapY + 24 * s end   -- 换组：留出组标题的位置
+      groups[#groups + 1] = { name = it.group, y = y }
+      y = y + 20 * s
+      col = 0
+      last = it.group
+    end
+    buttons[#buttons + 1] = {
+      x = x0 + col * (bw + gapX), y = y, w = bw, h = bh, item = it, index = i - 1,
+    }
+    col = col + 1
+    if col >= cols then col = 0; y = y + bh + gapY end
+  end
+  return {
+    x0 = x0, innerW = innerW, cols = cols, bw = bw, bh = bh,
+    buttons = buttons, groups = groups,
+    titleY = math.max(40 * s, H * 0.14),
+    footerY = H - math.max(22 * s, 30 * s),
+  }
+end
+
+-- 命中的是哪个条目（本体 main.js onPointerDown 里那段矩形判定）
+--   返回 item（含 index），点空处返回 nil
+function M.pick(layout, x, y)
+  for i = 1, #layout.buttons do
+    local b = layout.buttons[i]
+    if x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h then
+      return b.item
+    end
+  end
+  return nil
+end
+
+-- 局内左下角「回菜单」按钮（本体 config.js menuButtonRect）
+function M.playButtonRect(view, mt)
+  local s = (mt and mt.scale) or 1
+  local r = 22 * s
+  local pad = 26 * s
+  return { x = r + pad, y = view.h - r - pad, r = r }
+end
+
+-- 点是否落在按钮的判定圈里（本体用 r*1.3 的宽松判定：手指友好）
+function M.hitButton(btn, x, y, k)
+  k = k or 1.3
+  local dx, dy = x - btn.x, y - btn.y
+  return (dx * dx + dy * dy) <= (btn.r * k) * (btn.r * k)
+end
+
+return M
+end
+
 -- ---------------- 对外门面 ----------------
 -- 字段名与 lua/src 的文件名一致。
 ZUMA = {
@@ -4062,6 +4371,7 @@ ZUMA = {
   ui = __require("ui"),
   input = __require("input"),
   game = __require("game"),
+  menu = __require("menu"),
 }
 
 -- ★ 把生命周期回调暴露成**全局**：运行时是按固定名字查找的。

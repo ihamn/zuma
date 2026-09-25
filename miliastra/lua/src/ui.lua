@@ -35,6 +35,7 @@
 --   （`game.Tween` 仍在假宿主/真机上可用，将来要做"编辑期摆好的动效"再用。）
 
 local CFG = require('config')
+local MENU = require('menu')     -- 菜单布局（本体 config.js 的 1:1 移植，进对拍）
 
 local M = {}
 
@@ -460,6 +461,43 @@ function M.create(opts)
     ui.hudOrder[#ui.hudOrder + 1] = spec.key
   end
 
+  -- ⑬ 开始菜单（DESIGN.md §61 / 本体 render.js drawMenu + drawMenuButton）
+  --   ⚠ 必须在 create() 里建：真机契约是"只有 OnStart 能建控件"（见 HANDOFF §10）。
+  --   预算：暗幕 1 + 标题 1 + 副标题 1 + 分组 2 + 按钮 10 + 按钮文字 10 + 底部说明 1
+  --         + 局内"菜单"按钮 1 + 它的文字 1 = **28 个**（M.count 里算进去了）。
+  do
+    local m = {}
+    m.scrim = build(ballPrefab, '菜单暗幕控件', 1)
+    setColor(ui, m.scrim, '#060a12de')              -- 本体 rgba(6,10,18,0.87)
+    softEdge(m.scrim, false, 0)
+    local function mkText(what, i)
+      local c = build(hudPrefab, what, i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      c.bgColor = hexColor('#00000000')
+      return c
+    end
+    m.title = mkText('菜单标题控件', 1)
+    m.subtitle = mkText('菜单副标题控件', 1)
+    m.footer = mkText('菜单说明控件', 1)
+    m.groups = { mkText('菜单分组控件', 1), mkText('菜单分组控件', 2) }
+    m.btn = {}
+    m.btnLabel = {}
+    for i = 1, 10 do
+      m.btn[i] = build(ballPrefab, '菜单按钮控件', i)
+      softEdge(m.btn[i], false, 0)
+      m.btnLabel[i] = mkText('菜单按钮文字控件', i)
+    end
+    -- 局内左下角「回菜单」按钮（本体 §61：手机没有 Esc，这是离开一关的唯一出路）
+    m.playBtn = build(ballPrefab, '回菜单按钮控件', 1)
+    softEdge(m.playBtn, false, 0)
+    m.playLabel = mkText('回菜单文字控件', 1)
+    m.playLabel.text = '菜单'
+    m.ready = false                                      -- 位置/文字要不要重算（换关/换画布尺寸时）
+    ui.menu = m
+  end
+
   -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
   local total = M.count(ui)
   if total > 900 then
@@ -526,6 +564,8 @@ end
 -- ==================== 每帧同步 ====================
 
 -- st（可选）: { dt, events, hintLines = {..}, mode = 'match'|'insert' }
+local syncMenu   -- 前置声明：定义在本函数之后（菜单图层）
+
 function M.sync(ui, sc, st)
   st = st or {}
   local view = sc.view
@@ -900,7 +940,112 @@ function M.sync(ui, sc, st)
   if ui.hud.hint then
     text('hint', st.hintLines and table.concat(st.hintLines, '\n') or '')
   end
+
+  -- ---- 开始菜单（§61）：局内只画左下角那个"回菜单"按钮；菜单态画整屏 ----
+  syncMenu(ui, sc, st)
   return ui
+end
+
+-- ==================== 开始菜单（§61）====================
+-- 布局**不在**这里算：game.lua 用 menu.lua 算好（那套是本体 config.js 的 1:1 移植、进对拍），
+-- 通过 st.menuLayout 传进来。这里只负责画。
+syncMenu = function(ui, sc, st)
+  local m = ui.menu
+  if not m then return end
+  local view, mt = sc.view, sc.metrics
+  local s = mt.scale or 1
+  local cx = view.cx
+  local inMenu = (st.screen == 'menu')
+
+  -- 局内左下角「回菜单」按钮（本体 render.js drawMenuButton）
+  local pb = MENU.playButtonRect(view, mt)
+  local showPb = not inMenu
+  place(ui, m.playBtn, cx, view.cy, pb.x, pb.y, pb.r * 2, pb.r * 2, 0)
+  setColor(ui, m.playBtn, '#0c1422db')
+  setVisible(ui, m.playBtn, showPb)
+  place(ui, m.playLabel, cx, view.cy, pb.x, pb.y, pb.r * 2.4, pb.r * 2.4, 0)
+  m.playLabel.fontSize = math.max(10, math.floor(12 * s + 0.5))
+  m.playLabel.fontColor = hexColor('#e2eefff2')
+  setVisible(ui, m.playLabel, showPb)
+
+  if not inMenu then
+    setVisible(ui, m.scrim, false)
+    setVisible(ui, m.title, false)
+    setVisible(ui, m.subtitle, false)
+    setVisible(ui, m.footer, false)
+    for i = 1, #m.groups do setVisible(ui, m.groups[i], false) end
+    for i = 1, #m.btn do
+      setVisible(ui, m.btn[i], false)
+      setVisible(ui, m.btnLabel[i], false)
+    end
+    return
+  end
+
+  local L = st.menuLayout
+  if not L then return end
+
+  -- 暗幕（本体 rgba(6,10,18,0.87)）
+  place(ui, m.scrim, cx, view.cy, cx, view.cy, view.w, view.h, 0)
+  setColor(ui, m.scrim, '#060a12de')
+  setVisible(ui, m.scrim, true)
+
+  -- 标题 + 副标题（本体 drawMenu 的文案与字号）
+  local tw = view.w
+  place(ui, m.title, cx, view.cy, cx, L.titleY, tw, math.max(40, 60 * s), 0)
+  m.title.text = 'RNA 祖玛'
+  m.title.fontSize = math.max(26, math.floor(44 * s + 0.5))
+  m.title.fontColor = hexColor('#e8f2ff')
+  setVisible(ui, m.title, true)
+
+  place(ui, m.subtitle, cx, view.cy, cx, L.titleY + math.max(20, 30 * s), tw, 30 * s, 0)
+  m.subtitle.text = '反色配对 · 凑三颗 · 读出 mRNA'
+  m.subtitle.fontSize = math.max(11, math.floor(15 * s + 0.5))
+  m.subtitle.fontColor = hexColor('#a0c3ebf2')
+  setVisible(ui, m.subtitle, true)
+
+  -- 分组标题（左对齐在 x0）
+  for i = 1, #m.groups do
+    local g = m.groups[i]
+    local rec = L.groups[i]
+    if rec then
+      place(ui, g, cx, view.cy, L.x0 + L.innerW / 2, rec.y + 8 * s, L.innerW, 20 * s, 0)
+      g.horizontalAlignment = Enum.TextHorizontalAlignment.Left
+      g.text = rec.name
+      g.fontSize = math.max(11, math.floor(14 * s + 0.5))
+      g.fontColor = hexColor('#96c8f0e6')
+      setVisible(ui, g, true)
+    else
+      setVisible(ui, g, false)
+    end
+  end
+
+  -- 关卡按钮（本体：新手关偏青、核心关偏蓝；⚠ 图片控件画不了描边，所以只有填充色）
+  for i = 1, #m.btn do
+    local b = L.buttons[i]
+    local btn, lab = m.btn[i], m.btnLabel[i]
+    if b then
+      local tut = (b.item.group == '新手关')
+      place(ui, btn, cx, view.cy, b.x + b.w / 2, b.y + b.h / 2, b.w, b.h, 0)
+      setColor(ui, btn, tut and '#1a3c3af2' or '#162032f2')
+      setVisible(ui, btn, true)
+      place(ui, lab, cx, view.cy, b.x + b.w / 2, b.y + b.h / 2, b.w, b.h, 0)
+      lab.text = b.item.label or ''
+      lab.fontSize = math.max(11, math.floor(15 * s + 0.5))
+      lab.fontColor = hexColor('#eaf4ff')
+      setVisible(ui, lab, true)
+    else
+      setVisible(ui, btn, false)
+      setVisible(ui, lab, false)
+    end
+  end
+
+  -- 底部操作说明（★ 本体那句写的是 "Esc 回菜单"；移植侧没有 Esc，
+  --   离开一关靠左下角实体按钮 —— 所以这里按**移植侧真实操作**改写过，别照抄本体）
+  place(ui, m.footer, cx, view.cy, cx, L.footerY, view.w, 30 * s, 0)
+  m.footer.text = '点关卡开始 · 点画面发射 · 点核糖体换珠 · 点右下角切模式 · 点左下角回菜单'
+  m.footer.fontSize = math.max(10, math.floor(12 * s + 0.5))
+  m.footer.fontColor = hexColor('#96b4d7e6')
+  setVisible(ui, m.footer, true)
 end
 
 -- ui 一共建了多少个控件（诊断行 + 预算自检用）
@@ -910,6 +1055,7 @@ function M.count(ui)
     + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
     + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
+    + (ui.menu and (6 + #ui.menu.groups + #ui.menu.btn * 2 + 2) or 0)   -- 菜单图层（暗幕/标题/副标题/说明/分组/按钮+文字/回菜单按钮+文字）
   return n
 end
 

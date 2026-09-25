@@ -33,6 +33,7 @@ local CFG = require('config')
 local BOARD = require('board')
 local RB = require('ribosome')
 local UI = require('ui')
+local MENU = require('menu')       -- 开始菜单（§61）：布局是本体 config.js 的 1:1 移植
 local INPUT = require('input')
 local LEVELS_DATA = require('levels_data')
 
@@ -572,6 +573,16 @@ function G.boot()
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
 
+  -- ★★ §61 开局进菜单（本体 main.js：G.screen 初值就是 'menu'）。
+  --   刚装配好的这一关就**当菜单背景板**用（本体也是这么省的：不另画美术），
+  --   菜单态里 tick 不推进盘面，所以它是静止的。
+  --   levelIndex 那个脚本变量仍然有效：想**跳过菜单**直接进某一关，就填 levelIndex=8（配 skipMenu=1）。
+  G.menuItems = MENU.items(LEVELS_DATA.LEVELS, LEVELS_DATA.TUTORIAL_COUNT or 0)
+  G.screen = (param('skipMenu', 0) == 1) and 'playing' or 'menu'
+  say('开始菜单：%d 个条目（新手关 %d + 核心关 %d）；当前屏幕=%s（skipMenu=1 可跳过菜单）',
+    #G.menuItems, tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0,
+    #G.menuItems - (tonumber(LEVELS_DATA.TUTORIAL_COUNT) or 0), tostring(G.screen))
+
   -- ★ 洞穴状态（回答"洞穴看不到"这类问题：是本体规则、还是位置/图层）
   --   本体 render.js：`if (!(G.sc && G.sc.still)) drawCave(...)` —— **静止关本来就不画洞穴**。
   do
@@ -704,6 +715,26 @@ end
 function G.tick(dt)
   if not G.sc then return end
 
+  -- ★★ §61 菜单态：**不推进盘面**（本体 main.js update() 的早期 return）。
+  --   否则玩家在菜单里挑关卡时，链子会自己往洞口爬，点进去已经快输了。
+  if G.screen == 'menu' then
+    -- 只判菜单按钮；点别处什么都不做（尤其**不能发射**）
+    if (G.input.pending or 0) > 0 then
+      local mx, my = G.input.clickX, G.input.clickY
+      INPUT.consume(G.input)
+      if mx then
+        local L = MENU.layout(G.view, G.sc.metrics, G.menuItems)
+        local item = MENU.pick(L, mx, my)
+        if item then
+          G.startLevel(item.index + 1)        -- 本体 0 基 / 移植侧 1 基
+          return
+        end
+      end
+    end
+    UI.sync(G.ui, G.sc, G.syncState(dt))
+    return
+  end
+
   -- 结算画面：只等按键或超时，不再推进盘面
   if G.screen == 'won' or G.screen == 'lost' then
     G.resultTimer = G.resultTimer + dt
@@ -739,6 +770,18 @@ function G.tick(dt)
   if G.input.wantMode then
     G.input.wantMode = false
     BOARD.toggleMode(G.sc)
+  end
+
+  -- ★ 左下角「回菜单」按钮（本体 §61：手机上没 Esc，这是离开一关的唯一出路）。
+  --   判定要在**开火之前**，否则点按钮会顺带打一枪。
+  if (G.input.pending or 0) > 0 and G.input.clickX then
+    local mb = MENU.playButtonRect(G.view, G.sc.metrics)
+    if MENU.hitButton(mb, G.input.clickX, G.input.clickY, 1.3) then
+      INPUT.consume(G.input)
+      G.screen = 'menu'
+      UI.sync(G.ui, G.sc, G.syncState(dt))
+      return
+    end
   end
 
   if G.input.firing then
@@ -814,6 +857,9 @@ function G.syncState(dt)
     hintLines = lines,
     lastHit = G.lastHit,
     mate = G.mateText and G.mateText() or nil,
+    -- ★ 菜单：UI 层要知道"现在是不是菜单态"，以及按钮画在哪（布局在 menu.lua 里算，进对拍）
+    screen = G.screen,
+    menuLayout = MENU.layout(G.view, G.sc and G.sc.metrics or CFG.metrics(1), G.menuItems or {}),
   }
 end
 

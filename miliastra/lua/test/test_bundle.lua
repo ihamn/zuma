@@ -16,7 +16,7 @@ local Z = chunk()
 H.eq(type(Z), 'table', '返回值是门面表')
 local n = 0
 for _ in pairs(Z) do n = n + 1 end
-H.eq(n, 14, '14 个模块')
+H.eq(n, 15, '15 个模块（多了 menu.lua：开始菜单布局）')
 H.eq(type(Z.game), 'table', '有 game 模块')
 H.eq(type(Z.board), 'table', '有 board 模块')
 H.eq(type(Z.ui), 'table', '有 ui 模块')
@@ -42,6 +42,7 @@ host.params.ballCount = 32
 host.params.shotCount = 4
 host.params.seed = 4242
 host.params.autoNext = 0
+host.params.skipMenu = 1     -- ★ §61：本体开局在菜单；这些测试要直接进游戏，所以显式跳过菜单
 MOCK.install(host)
 host.scriptObj.object = host.root
 

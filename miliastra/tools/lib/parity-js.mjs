@@ -8,7 +8,8 @@
 // JS 侧统一 **+1**，让两边的输出可以直接逐字比对。
 
 import { makeRng } from '../../../src/rng.js';
-import { BASES, metrics, viewFor } from '../../../src/config.js';
+import { BASES, metrics, viewFor, menuLayout, menuButtonRect } from '../../../src/config.js';
+import { ALL_LEVELS, TUTORIALS } from '../../../src/levels.js';
 import * as GEO from '../../../src/geometry.js';
 import * as SP from '../../../src/spines.js';
 import * as RUN from '../../../src/run.js';
@@ -72,7 +73,40 @@ export function evalCommands(lines) {
       const m = metrics(a[0]);
       emit('metrics', a[0], m.p, m.R, m.r, m.d, m.linkGap, m.diameterRatio, m.areaRatio);
 
-    } else if (cmd === 'view') {
+    } else if (cmd === 'menu') {
+    // 菜单布局（本体 config.js menuLayout / menuButtonRect）——和移植侧 menu.lua 逐值对拍。
+    // 条目表按本体 main.js rebuild() 里那段映射原文算（新手关用全名、核心关带序号）。
+    const [w, h, scale, mode] = a;
+    const v = viewFor(w, h);
+    const mt = metrics(scale);
+    const items = ALL_LEVELS.map((l, i) => {
+      const tut = i < TUTORIALS.length;
+      return {
+        index: i,
+        group: tut ? '新手关' : '核心关',
+        label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name)),
+      };
+    });
+    if (mode === 0) {                              // 条目表
+      emit('menu.items', items.length, TUTORIALS.length);
+      for (const it of items) emit('menu.item', it.index + 1, it.group === '新手关' ? 1 : 0, it.label);
+    } else if (mode === 1) {                       // 布局
+      const L = menuLayout(v, mt, items);
+      emit('menu.layout', L.x0, L.innerW, L.cols, L.bw, L.bh, L.titleY, L.footerY, L.buttons.length, L.groups.length);
+      for (const b of L.buttons) emit('menu.btn', b.x, b.y, b.w, b.h, b.item.index + 1);
+      for (const g of L.groups) emit('menu.group', g.name, g.y);
+    } else {                                       // 局内左下角按钮 + 命中判定
+      const b = menuButtonRect(v, mt);
+      emit('menu.playbtn', b.x, b.y, b.r);
+      const L = menuLayout(v, mt, items);
+      for (let i = 4; i + 1 < a.length; i += 2) {
+        const px = a[i], py = a[i + 1];
+        const hit = L.buttons.find((q) => px >= q.x && px <= q.x + q.w && py >= q.y && py <= q.y + q.h);
+        emit('menu.pick', px, py, hit ? hit.item.index + 1 : 0);
+      }
+    }
+
+  } else if (cmd === 'view') {
       const v = viewFor(a[0], a[1]);
       emit('view', a[0], a[1], v.cx, v.cy, v.rx, v.ry, v.scale, v.portrait ? 1 : 0);
 

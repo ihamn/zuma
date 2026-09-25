@@ -232,6 +232,9 @@ M.LEVELS = {
   },
 }
 
+-- 前多少个是新手关（本体 TUTORIALS.length）；菜单按它分组
+M.TUTORIAL_COUNT = 7
+
 function M.byId(id)
   for i = 1, #M.LEVELS do
     if M.LEVELS[i].id == id then return M.LEVELS[i] end

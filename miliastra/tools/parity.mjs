@@ -33,6 +33,15 @@ for (const s of SEEDS) {
 for (const sc of [0.44, 0.7, 0.82, 1, 1.34]) add(`metrics ${sc}`);
 for (const [w, h] of VIEWS) add(`view ${w} ${h}`);
 
+// --- 开始菜单（§61）：条目表 / 布局 / 局内按钮 + 命中判定 ---
+for (const [w, h] of VIEWS) {
+  for (const sc of [0.82, 1, 1.42]) {
+    add(`menu ${w} ${h} ${sc} 0`);
+    add(`menu ${w} ${h} ${sc} 1`);
+    add(`menu ${w} ${h} ${sc} 2 5 5 40 40 ${w / 2} ${h / 2} ${w - 5} ${h - 5}`);
+  }
+}
+
 // --- 轨道长度反解 ---
 for (const [w, h] of VIEWS) for (const b of [0, 9, 12, 22, 33, 45, 60, 111]) add(`turns ${b} ${w} ${h}`);
 

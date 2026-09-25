@@ -109,6 +109,11 @@ for (const r of rows) {
 }
 lines.push('}');
 lines.push('');
+// ★ 菜单要用它把"新手关 / 核心关"分组（本体 main.js：i < TUTORIALS.length → 新手关）。
+//   导出成常量而不是让 Lua 侧猜（原来想用 still/spineKind 之类特征去猜，太脆）。
+lines.push('-- 前多少个是新手关（本体 TUTORIALS.length）；菜单按它分组');
+lines.push('M.TUTORIAL_COUNT = ' + TUTORIALS.length);
+lines.push('');
 lines.push('function M.byId(id)');
 lines.push('  for i = 1, #M.LEVELS do');
 lines.push('    if M.LEVELS[i].id == id then return M.LEVELS[i] end');

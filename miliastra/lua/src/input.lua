@@ -47,6 +47,13 @@ function M.create(opts)
     area:AddCursorEventListener(Enum.CursorEventType.CursorClick, function(d)
       inp.pending = inp.pending + 1
       inp.stats.clicks = inp.stats.clicks + 1
+      -- ★ 菜单/按钮要用"点在哪"。官方 API 直接给光标坐标（左下原点、y 向上），
+      --   这里立刻换算成**棋盘坐标**存下来 —— 不依赖回调参数 d 的形状（那个没文档保证）。
+      local ok, gx, gy = pcall(game.GetCursorUIPos)
+      if ok and type(gx) == 'number' and type(gy) == 'number' then
+        local bx, by = M.toBoard(inp.canvas, gx, gy)
+        inp.clickX, inp.clickY = bx, by
+      end
     end)
   end
 
@@ -138,6 +145,7 @@ end
 -- 开火意图被消费掉之后调用
 function M.consume(inp)
   inp.pending = 0
+  inp.clickX, inp.clickY = nil, nil
 end
 
 return M

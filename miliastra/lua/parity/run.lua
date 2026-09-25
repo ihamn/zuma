@@ -10,6 +10,8 @@
 
 local rngM = require('rng')
 local CFG = require('config')
+local MENU = { m = require('menu') }
+local LEVELS_DATA = require('levels_data')
 local GEO = require('geometry')
 local SP = require('spines')
 local RUN = require('run')
@@ -73,6 +75,39 @@ end
 handlers.metrics = function(a)
   local m = CFG.metrics(a[1])
   emit('metrics', a[1], m.p, m.R, m.r, m.d, m.linkGap, m.diameterRatio, m.areaRatio)
+end
+
+-- 开始菜单（§61）：和 JS 侧 parity-js.mjs 的 'menu' 分支一一对应。
+--   布局用的是**移植侧** menu.lua（本体 config.js 的 1:1 移植），对拍就是证明它没抄错。
+--   mode: 0 = 条目表、1 = 布局、其它 = 局内按钮 + 命中判定（a[5..] 是坐标对）
+handlers.menu = function(a)
+  local w, h, scale, mode = a[1], a[2], a[3], a[4]
+  local v = CFG.viewFor(w, h)
+  local mt = CFG.metrics(scale)
+  local items = MENU.m.items(LEVELS_DATA.LEVELS, LEVELS_DATA.TUTORIAL_COUNT)
+  if mode == 0 then
+    emit('menu.items', #items, LEVELS_DATA.TUTORIAL_COUNT or 0)
+    for i = 1, #items do
+      emit('menu.item', items[i].index + 1, (items[i].group == '新手关') and 1 or 0, items[i].label)
+    end
+  elseif mode == 1 then
+    local L = MENU.m.layout(v, mt, items)
+    emit('menu.layout', L.x0, L.innerW, L.cols, L.bw, L.bh, L.titleY, L.footerY, #L.buttons, #L.groups)
+    for i = 1, #L.buttons do
+      local b = L.buttons[i]
+      emit('menu.btn', b.x, b.y, b.w, b.h, b.item.index + 1)
+    end
+    for i = 1, #L.groups do emit('menu.group', L.groups[i].name, L.groups[i].y) end
+  else
+    local pb = MENU.m.playButtonRect(v, mt)
+    emit('menu.playbtn', pb.x, pb.y, pb.r)
+    local L = MENU.m.layout(v, mt, items)
+    for i = 5, #a, 2 do
+      local px, py = a[i], a[i + 1]
+      local it = MENU.m.pick(L, px, py)
+      emit('menu.pick', px, py, it and (it.index + 1) or 0)
+    end
+  end
 end
 
 handlers.view = function(a)

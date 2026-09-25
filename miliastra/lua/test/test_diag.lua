@@ -25,6 +25,7 @@ local function newHost(opts)
   host.params.ballCount = 8
   host.params.shotCount = 2
   host.params.autoNext = 0
+host.params.skipMenu = 1     -- ★ §61：本体开局在菜单；这些测试要直接进游戏，所以显式跳过菜单
   -- ★ 诊断行现在**默认关**（屏幕上要和本体一致）；这条测试是专门测它的，所以显式打开
   host.params.diag = 1
   if opts.failCursor then host.failPrefabs = { [3] = true } end

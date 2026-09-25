@@ -25,6 +25,7 @@ host.params.ballCount = 32
 host.params.shotCount = 4
 host.params.seed = 4242
 host.params.autoNext = 0
+host.params.skipMenu = 1     -- ★ §61：本体开局在菜单；这些测试要直接进游戏，所以显式跳过菜单
 MOCK.install(host)
 host.scriptObj.object = host.root
 
