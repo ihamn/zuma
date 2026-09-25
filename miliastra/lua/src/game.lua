@@ -80,9 +80,9 @@ local function buildHudSpecs(w, h, teach)
   local pad = 16
   local halfW, halfH = w / 2, h / 2
   local specs = {
-    { key = 'score', x = -halfW + 120 + pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'left' },
+    { key = 'score', x = -halfW + 230 + pad, y = halfH - 92 - pad, w = 240, h = 44, size = 30, align = 'left' },
     { key = 'lives', x = halfW - 120 - pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'right' },
-    { key = 'runs', x = -halfW + 220 + pad, y = halfH - 84 - pad, w = 440, h = 40, size = 26, align = 'left' },
+    { key = 'runs', x = -halfW + 330 + pad, y = halfH - 144 - pad, w = 440, h = 40, size = 26, align = 'left' },
     { key = 'mode', x = -halfW + 120 + pad, y = -halfH + 32 + pad, w = 240, h = 44, size = 26, align = 'left' },
     { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center', panel = 'light' },
     -- 结果框在正中央：**平时没有文字**，所以不给底板（给了就是一块盖住核糖体的黑板）
@@ -90,8 +90,8 @@ local function buildHudSpecs(w, h, teach)
   }
   -- teach=1 才加那两行辅助（本体没有）：手里该打谁 + 上次命中判定
   if teach then
-    specs[#specs + 1] = { key = 'mate', x = -halfW + 120 + pad, y = halfH - 178 - pad, w = 640, h = 36, size = 22, align = 'left' }
-    specs[#specs + 1] = { key = 'hit', x = -halfW + 120 + pad, y = halfH - 136 - pad, w = 640, h = 36, size = 22, align = 'left' }
+    specs[#specs + 1] = { key = 'mate', x = -halfW + 230 + pad, y = halfH - 238 - pad, w = 640, h = 36, size = 22, align = 'left' }
+    specs[#specs + 1] = { key = 'hit', x = -halfW + 230 + pad, y = halfH - 196 - pad, w = 640, h = 36, size = 22, align = 'left' }
   end
   return specs
 end
