@@ -661,10 +661,17 @@ local function syncEgg(ui, sc, st)
     local function raise(c)
       if c and c.SetAsLastSibling then pcall(c.SetAsLastSibling, c) end
     end
+    -- ⚠⚠ 池子有 12 个，彩蛋只用 **7** 个 ⇒ 第 8~12 个必须**藏掉** ✗：
+    --   上一版这里是 `for i = 1, #e.btn do setVisible(..., true)`（全放出来）⇒ 出两个 bug：
+    --     ① 后 5 个还留着菜单的关卡名（"8 螺旋·外 / 9 交叉桥 / 10 无尽 / 经典 · 螺旋"）
+    --        —— 奇匠："8910经典螺旋不会消失"
+    --     ② 它们没被设过颜色、又停在菜单原位（屏幕中央）⇒ 球素材原色 = **中央一个白圆**
+    local EGG_BTN = 7
     for i = 1, #e.btn do
-      setVisible(ui, e.btn[i], true)
-      setVisible(ui, e.btnLabel[i], true)
-      raise(e.btn[i]); raise(e.btnLabel[i])
+      local want = (i <= EGG_BTN)
+      setVisible(ui, e.btn[i], want)
+      setVisible(ui, e.btnLabel[i], want)
+      if want then raise(e.btn[i]); raise(e.btnLabel[i]) end
     end
     for i = 1, #e.chart do raise(e.chart[i]) end
   end
