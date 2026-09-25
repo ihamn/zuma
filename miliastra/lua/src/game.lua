@@ -54,9 +54,17 @@ end
 -- 不依赖控件的日志通道（官方日志 API）。
 -- ★ 为什么必须有：真机上控件要等到 OnStart 才建得出来，一旦在那之前失败，
 --   屏幕上那行"诊断字"本身也是控件、也建不出来 —— 这时只剩日志能告诉我们死在哪。
+-- ★★ 为什么格式化失败也要把值打出来：第一次真机试玩时这行打成了字面量 `画布 %dx%d` ——
+--   `%d` 遇到非整数（真机 canvas 尺寸是浮点）会抛错，pcall 一接住就只剩格式串，
+--   等于**把最想看的信息吞了**。现在退回"格式串 + 值"，丑但有用。
 local function say(fmt, ...)
   local ok, s = pcall(string.format, fmt, ...)
-  if not ok then s = tostring(fmt) end
+  if not ok then
+    local n = select('#', ...)
+    local parts = {}
+    for i = 1, n do parts[i] = tostring((select(i, ...))) end
+    s = tostring(fmt) .. '   [' .. table.concat(parts, ' ') .. ']'
+  end
   if print then pcall(print, '[zuma] ' .. s) end
 end
 
@@ -96,7 +104,7 @@ function G.OnInit()
   G.error = nil          -- ★ 每次重来都清掉：否则上一次的错误会一直挂在屏幕上（测试抓到的）
   G.booted = false
 
-  say('OnInit：画布 %dx%d', w, h)
+  say('OnInit：画布 %s x %s', tostring(w), tostring(h))
   if script and script.EnableUpdate then
     local eok, eerr = pcall(function() script:EnableUpdate(true) end)
     say('EnableUpdate(true) -> %s', eok and 'ok' or tostring(eerr))
@@ -148,9 +156,19 @@ local function detectPrefabs(root)
     playPrefab = 'Container',
   }
   local found = {}
-  if not (typeof and game.InstantiateClientUIControl and game.DestroyClientUIControl) then return found end
+  local probe = {}        -- 诊断用：前几个索引到底"建出来了"还是"报什么错"
+  if not (typeof and game.InstantiateClientUIControl and game.DestroyClientUIControl) then
+    return found, probe
+  end
   for i = 1, 32 do
     local ok, c = pcall(game.InstantiateClientUIControl, i, root)
+    if i <= 8 then
+      local desc
+      if not ok then desc = '报错 ' .. tostring(c)
+      elseif c == nil then desc = 'nil（没有这个模板）'
+      else desc = '建出 ' .. tostring(typeof(c)) end
+      probe[#probe + 1] = '索引 ' .. tostring(i) .. '：' .. desc
+    end
     if ok and c then
       local t = typeof(c)
       for k, word in pairs(want) do
@@ -159,7 +177,7 @@ local function detectPrefabs(root)
       pcall(game.DestroyClientUIControl, c)      -- 探针不留痕
     end
   end
-  return found
+  return found, probe
 end
 
 -- 真正干活的初始化。任何一步失败都会被 OnInit 的 pcall 接住并显示在屏幕上。
@@ -180,10 +198,18 @@ function G.boot()
 
   -- ★ 模板索引定下来：填了变量的用变量，没填的**自动认**（见 detectPrefabs 注释）
   local useAuto = param('autoPrefabs', 1) ~= 0
-  local auto = useAuto and detectPrefabs(root) or {}
+  local auto, probe = {}, {}
   if useAuto then
+    auto, probe = detectPrefabs(root)
     say('自动认模板：球=%s 文本=%s 光标=%s 容器=%s', tostring(auto.ballPrefab), tostring(auto.hudPrefab),
       tostring(auto.cursorPrefab), tostring(auto.playPrefab))
+    if not (auto.ballPrefab or auto.hudPrefab or auto.cursorPrefab or auto.playPrefab) then
+      -- 一个模板都没有 = 动态创建无从谈起。把"该怎么建"和"探针看到了什么"一起打出来。
+      say('⚠ 索引 1~32 里没找到任何客户端控件模板 —— 这就是屏幕空白的原因')
+      say('   建法：界面控件组库 → 客户端控件模板 → 【添加客户端控件】→ 选类型 → **存为模板**')
+      say('   （注意是"存为模板"，不是"在画布里摆一个控件"；摆出来的实例没有模板索引）')
+      for i = 1, #probe do say('   探针 %s', probe[i]) end
+    end
   end
   G.prefabs = {
     ball = param('ballPrefab', auto.ballPrefab or 1),
@@ -194,8 +220,8 @@ function G.boot()
     play = param('playPrefab', auto.playPrefab),
   }
   G.prefabs.shot = param('shotPrefab', G.prefabs.ball)
-  say('用这套模板索引：球=%d 弹药=%d 文本=%d 光标=%s 玩区=%s', G.prefabs.ball, G.prefabs.shot,
-    G.prefabs.hud, tostring(G.prefabs.cursor), tostring(G.prefabs.play))
+  say('用这套模板索引：球=%s 弹药=%s 文本=%s 光标=%s 玩区=%s', tostring(G.prefabs.ball), tostring(G.prefabs.shot),
+    tostring(G.prefabs.hud), tostring(G.prefabs.cursor), tostring(G.prefabs.play))
 
   -- ★★ 诊断框**第一个建**：万一后面哪一步炸了，屏幕上还有地方显示原因。
   --   （这一条很关键：我在手机上看不到你的屏幕，那行字就是唯一的线索）
@@ -293,7 +319,7 @@ function G.boot()
   })
 
 
-  say('控件池：球 %d / 弹药 %d', #G.ui.balls, #G.ui.shots)
+  say('控件池：球 %s / 弹药 %s', tostring(#G.ui.balls), tostring(#G.ui.shots))
 
   -- ★ 诊断行要**画在所有东西上面**（排错的生命线，被压住就等于没有）：
   --   必须在**所有控件都建完之后**再提到最上层 —— 早了会被后建的玩区/HUD 盖回去。
