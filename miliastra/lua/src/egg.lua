@@ -144,6 +144,7 @@ function M.tick(st, dt)
     if np < 1 then np = 1 end
     st.lastDelta = np - st.price
     st.price = np
+    st.priceTick = (st.priceTick or 0) + 1    -- ★ 报价序号：还金要等它变过（借金/还金之间必须隔一次波动）
     note(st, string.format('报价 %.0f（%+.1f）', st.price, st.lastDelta))
     ev[#ev + 1] = { type = 'price', price = st.price, delta = st.lastDelta }
   end
@@ -190,33 +191,40 @@ end
 
 -- ★ 做空（奇匠："做空每回100啊！"）：每按一次借入 100g 黄金并立刻按现价卖掉
 --   ⇒ 手上多一笔现金、同时欠 100g 黄金 ⇒ 金价跌了就赚、涨了就亏。
---   和"借 100g 套现"是同一套账（原玩法里做空就是这么做的），但这里是**独立动作**：
---   有自己的常量、自己的上限判定、自己的日志。
+-- ★ 借金套现（奇匠术语："借金" = 借金套现）：借入 100g 黄金并**立刻按现价卖掉**
+--   ⇒ 手上多一笔现金、同时欠 100g 黄金。金价跌了赚、涨了亏。
+--   ⚠ 一次一档价：同一档报价里借的，**必须等到下一次报价刷新**才能还金（见下）。
 M.SHORT_GOLD = 100
 function M.short(st)
-  if not M.canBorrow(st) then return false, '欠款到顶，做不了空' end
+  if not M.canBorrow(st) then return false, '欠款到顶，借不了金' end
   st.debtGold = st.debtGold + M.SHORT_GOLD
   st.cash = st.cash + M.SHORT_GOLD * st.price
   st.traded = st.traded + 1
-  note(st, '做空 ' .. M.SHORT_GOLD .. 'g（欠金 ' .. string.format('%.0f', st.debtGold) .. 'g）')
+  st.shortPrice = st.price          -- ★ 记下借金套现那一档的价格
+  st.shortTick = st.priceTick or 0  -- ★ 以及那一档的报价序号
+  note(st, '借金套现 ' .. M.SHORT_GOLD .. 'g @ ' .. string.format('%.1f', st.price)
+    .. '（欠金 ' .. string.format('%.0f', st.debtGold) .. 'g）')
   return true
 end
 
--- ★ 还金（做空的**平仓**动作）：按现价买回 100g 还掉金欠。
---   奇匠问："借金和还金中间要分开等波动啊？" —— 对，这就是做空的玩法本体：
---   借金（做空）时的价格 P1 与还金时的价格 P2 **不一样**才分得出赚赔，
---   而报价每 5s 才动一次 ⇒ "等波动"是**天然发生**的，不需要额外锁。
---   （同一档价格里借了立刻还 = 现金原地打转，不赚不赔 ⇒ 玩家自己就不会那么干。）
+-- ★ 还金（借金套现的**平仓**）：按现价买回 100g 还掉金欠。
+--   奇匠："借金和还金中间要分开等波动啊？" —— **对，这里做成硬约束**：
+--   借金那一档的价格记在 st.shortPrice / st.shortTick，**必须等报价刷新过**（每 5s 一次）
+--   才允许还金 ⇒ 想平仓就得等一次波动，赚赔由此产生（跌了赚、涨了亏）。
 M.REPAY_GOLD = 100
 function M.repayGold(st)
   if (st.debtGold or 0) <= 0 then return false, '没有金欠要还' end
+  if st.shortTick ~= nil and (st.priceTick or 0) <= st.shortTick then
+    return false, '刚借金，等下一次报价（5s）再还'
+  end
   local grams = math.min(M.REPAY_GOLD, st.debtGold)
   local cost = grams * st.price
   if cost > st.cash then return false, '现金不够还这一笔' end
   st.cash = st.cash - cost
   st.debtGold = st.debtGold - grams
   st.traded = st.traded + 1
-  note(st, '还金 ' .. string.format('%.0f', grams) .. 'g（花 ' .. string.format('%.0f', cost) .. '）')
+  note(st, '还金 ' .. string.format('%.0f', grams) .. 'g @ ' .. string.format('%.1f', st.price)
+    .. '（花 ' .. string.format('%.0f', cost) .. '）')
   return true
 end
 

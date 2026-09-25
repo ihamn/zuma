@@ -85,3 +85,16 @@ H.eq(s6.gold, 0, '持仓清空')
 local a, b = EGG.new(2026), EGG.new(2026)
 for _ = 1, 100 do EGG.tick(a, 1); EGG.tick(b, 1) end
 H.eq(a.price, b.price, '同 seed 报价完全一致（' .. string.format('%.2f', a.price) .. '）')
+
+-- ⑨ 借金套现 / 还金：两者之间**必须隔一次报价**（奇匠："借金和还金中间要分开等波动啊？"）
+local s7 = EGG.new(1)
+H.ok(EGG.short(s7), '借金套现 100g')
+H.eq(s7.debtGold, 100, '金欠 100g')
+H.eq(s7.cash, 20000 + 100 * s7.price, '现金多了 100g 的钱（套现）')
+H.ok(not EGG.repayGold(s7), '★ 同一档价格不能立刻还金（要先等波动）')
+EGG.tick(s7, 5.1)                       -- 等一次报价
+local p2 = s7.price
+H.ok(EGG.repayGold(s7), '★ 隔了一次报价就能还金了（新价 ' .. string.format('%.1f', p2) .. '）')
+H.eq(s7.debtGold, 0, '金欠还清')
+-- 赚赔：跌了赚（同一 seed 下价格是确定的，这里只验方向公式成立）
+H.ok(s7.cash ~= 20000, '平仓后现金与初始不同（赚赔已产生，与价格波动挂钩）')
