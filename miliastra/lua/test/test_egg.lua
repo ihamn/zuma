@@ -86,15 +86,19 @@ local a, b = EGG.new(2026), EGG.new(2026)
 for _ = 1, 100 do EGG.tick(a, 1); EGG.tick(b, 1) end
 H.eq(a.price, b.price, '同 seed 报价完全一致（' .. string.format('%.2f', a.price) .. '）')
 
--- ⑨ 借金套现 / 还金：两者之间**必须隔一次报价**（奇匠："借金和还金中间要分开等波动啊？"）
+-- ⑨ 借金套现 / 还金：**可以秒还**（奇匠纠正："还金不需要等波动再还，玩家完全可以借完秒还"）
 local s7 = EGG.new(1)
 H.ok(EGG.short(s7), '借金套现 100g')
 H.eq(s7.debtGold, 100, '金欠 100g')
 H.eq(s7.cash, 20000 + 100 * s7.price, '现金多了 100g 的钱（套现）')
-H.ok(not EGG.repayGold(s7), '★ 同一档价格不能立刻还金（要先等波动）')
-EGG.tick(s7, 5.1)                       -- 等一次报价
-local p2 = s7.price
-H.ok(EGG.repayGold(s7), '★ 隔了一次报价就能还金了（新价 ' .. string.format('%.1f', p2) .. '）')
+H.ok(EGG.repayGold(s7), '★ 借完**秒还**也允许（系统不要求等波动）')
 H.eq(s7.debtGold, 0, '金欠还清')
--- 赚赔：跌了赚（同一 seed 下价格是确定的，这里只验方向公式成立）
-H.ok(s7.cash ~= 20000, '平仓后现金与初始不同（赚赔已产生，与价格波动挂钩）')
+H.eq(s7.cash, 20000, '秒还后现金回到原样（同一档价 ⇒ 不赚不赔，这是对的）')
+-- 换一档价再还，才出现赚赔
+local s8 = EGG.new(1)
+EGG.short(s8)
+EGG.tick(s8, 5.1)
+s8.cash = s8.cash + 100000
+H.ok(EGG.repayGold(s8), '等过一次报价再还也可以')
+H.eq(s8.debtGold, 0, '金欠还清')
+H.ok(s8.cash ~= 20000 + 100000, '换了一档价 ⇒ 现金与"秒还"不同（赚赔来自价格波动）')

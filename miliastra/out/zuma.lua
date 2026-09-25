@@ -4818,24 +4818,22 @@ function M.short(st)
   return true
 end
 
--- ★ 还金（借金套现的**平仓**）：按现价买回 100g 还掉金欠。
---   奇匠："借金和还金中间要分开等波动啊？" —— **对，这里做成硬约束**：
---   借金那一档的价格记在 st.shortPrice / st.shortTick，**必须等报价刷新过**（每 5s 一次）
---   才允许还金 ⇒ 想平仓就得等一次波动，赚赔由此产生（跌了赚、涨了亏）。
+-- ★ 还金（借金套现的**平仓**）：按**现价**把欠的黄金折成现金还掉（等量黄金价值的现金）。
+--   ⚠ 奇匠纠正过：**不需要等波动** —— 玩家完全可以"借完秒还" ✓。
+--   我一度加了"必须等下一次报价"的硬约束，那是**错的** ✗（已撤）。
+--   秒还的后果天然合理：同一档价借了立刻还 ⇒ 现金原地打转、不赚不赔 ⇒ 想赚就得自己等波动 ✓，
+--   这个"等"是玩家自己的选择，不该由系统锁死 ✓。
 M.REPAY_GOLD = 100
 function M.repayGold(st)
   if (st.debtGold or 0) <= 0 then return false, '没有金欠要还' end
-  if st.shortTick ~= nil and (st.priceTick or 0) <= st.shortTick then
-    return false, '刚借金，等下一次报价（5s）再还'
-  end
   local grams = math.min(M.REPAY_GOLD, st.debtGold)
-  local cost = grams * st.price
+  local cost = grams * st.price          -- 等量黄金价值 = 克数 × 现价
   if cost > st.cash then return false, '现金不够还这一笔' end
   st.cash = st.cash - cost
   st.debtGold = st.debtGold - grams
   st.traded = st.traded + 1
   note(st, '还金 ' .. string.format('%.0f', grams) .. 'g @ ' .. string.format('%.1f', st.price)
-    .. '（花 ' .. string.format('%.0f', cost) .. '）')
+    .. '（付现金 ' .. string.format('%.0f', cost) .. '）')
   return true
 end
 
