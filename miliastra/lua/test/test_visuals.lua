@@ -222,7 +222,39 @@ do
     local ratio = shown.sizeDeltaX / ball.sizeDeltaX
     H.ok(ratio < 1.4, '★ 光晕直径 / 球直径 = ' .. string.format('%.2f', ratio)
       .. '（必须 < 1.4；2.1 就是"球变大了"那个 bug）')
+    -- 本体是**绝对值 +3**（不是比例）：光晕半径 = 球半径 + 3
+    local want = (ball.sizeDeltaX / 2 + 3) * 2
+    H.ok(math.abs(shown.sizeDeltaX - want) < 1.5,
+      '★ 光晕直径 = 球直径 + 6（本体 r+3）：实际 ' .. string.format('%.1f', shown.sizeDeltaX)
+      .. ' 期望 ' .. string.format('%.1f', want))
   end
+
+  -- ★ 副轨绑定球**也要描边**（本体 glowColor 为空 → 白色），半径同样是 r+3
+  local eh = GAME.ui.halo[GAME.ui.haloHalf + 1]
+  H.ok(eh ~= nil, '★ 副轨描边控件存在（halo 池是 2n）')
+  H.eq(eh.visible, true, '★ 绑定小球的描边画出来了')
+  local e1 = elim[1]
+  H.ok(math.abs(eh.sizeDeltaX - (e1.r + 3) * 2) < 1.5,
+    '★ 副轨描边直径 = (r+3)*2 = ' .. string.format('%.1f', (e1.r + 3) * 2)
+    .. '，实际 ' .. string.format('%.1f', eh.sizeDeltaX))
+
+  -- ★ 核糖体两颗待发球都要字母（本体 lb(1) / lb(0) 都画）
+  local rb = GAME.sc.rb
+  H.ok(GAME.ui.loadedLetter ~= nil and GAME.ui.loadedLetter[1] ~= nil, '有待发球字母池')
+  H.eq(GAME.ui.loadedLetter[1].visible, true, '★ 炮口那颗待发球有字母')
+  H.eq(GAME.ui.loadedLetter[1].text, tostring(rb.loaded[1]),
+    '★ 炮口球字母 = rb.loaded[1] = ' .. tostring(rb.loaded[1]))
+  H.eq(GAME.ui.loadedLetter[2].visible, true, '★ 身后那颗预备球也有字母')
+  H.eq(GAME.ui.loadedLetter[2].text, tostring(rb.loaded[2]),
+    '★ 预备球字母 = rb.loaded[2] = ' .. tostring(rb.loaded[2]))
+  H.eq(GAME.ui.loadedHalo[1].visible, true, '★ 炮口球带白色描边（本体那颗 glow=true）')
+
+  -- ★ 大小球配比 = √2（DESIGN 的识别通道：出球道大球 / 三消道小球）
+  local mt = GAME.sc.metrics
+  local ratio = mt.R / mt.r
+  H.ok(math.abs(ratio - math.sqrt(2)) < 1e-6,
+    '★ 大小球半径比 R/r = ' .. string.format('%.4f', ratio) .. '（应 = √2 = 1.4142）'
+    .. '；画到屏幕上是直径 ' .. string.format('%.1f', mt.R * 2) .. ' : ' .. string.format('%.1f', mt.r * 2))
 end
 
 H.finish()

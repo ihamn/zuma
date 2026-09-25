@@ -113,7 +113,8 @@ local function adoptImageId(root)
       local ch = kids[i]
       local id = ch and ch.imageId
       local t = typeof and typeof(ch) or nil
-      if id ~= nil and type(t) == 'string' and t:find('Image', 1, true) then
+      -- ★ 只认**正整数**：0 表示"没配图"（真机/假宿主都会这么给），捡了 0 等于没设 → 全画成"?"
+      if type(id) == 'number' and id > 0 and type(t) == 'string' and t:find('Image', 1, true) then
         found[#found + 1] = { id = id, name = tostring(ch.name), t = t }
       end
       walk(ch, depth + 1)

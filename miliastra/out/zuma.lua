@@ -2196,8 +2196,9 @@ local V = {
   caveR = 1.5,         -- drawCave：洞穴半径 = mt.R × 1.5
   linkFrom = 0.26,     -- drawPairLink：连线画在 26%~74% 之间
   linkTo = 0.74,
-  haloScale = 1.16,     -- 状态光晕 = 球外**一圈细环**（本体 render.js 是 r+3 的描边：1.16×19≈22=r+3）
-                        -- ★ 原来是 2.1× 实心圆 → 看着像"球变大了"，用户一眼看出来不对
+  haloScale = 1.16,     -- （旧）按比例放大的近似 —— 现在改用 haloPad（本体是**绝对值 +3**）
+  haloPad = 3,          -- 状态光晕 = 球外 **r+3** 处一圈描边（本体 render.js drawBead：
+                        --   `ctx.arc(x, y, r + 3, ...)`、`lineWidth = max(1.5, r * 0.18)`）
   letterScale = 1.15,  -- 球面字母字号 = 球半径 × 1.15
   trackWidthK = 2.3,   -- 轨道路面宽 = 轨半径 × 2.3（盖住珠子）
 }
@@ -2387,7 +2388,7 @@ function M.create(opts)
     canvas = canvas,
     parent = parent,
     last = {},
-    balls = {}, shots = {}, links = {}, elim = {}, merges = {}, halo = {}, letter = {}, elimLetter = {}, track = {},
+    balls = {}, shots = {}, links = {}, elim = {}, merges = {}, halo = {}, letter = {}, elimLetter = {}, loadedLetter = {}, track = {},
     loaded = {}, hud = {},
     fx = {},                 -- 短命动效表
     elimOwner = {},          -- 球 id -> 正在显示它的绑定小球控件（用来播"被消掉"的动效）
@@ -2478,7 +2479,11 @@ function M.create(opts)
 
   -- ④ 状态光晕（在球下面）
   if ui.fancy ~= 0 then
-    for i = 1, n do
+    -- ★ 光晕池 = **2n**：主轨球用 halo[i]、副轨绑定球用 halo[haloHalf + i]。
+    --   本体 render.js 的 drawBeadLayer 把 `['eliminate','spawn']` **两条轨都画一遍**，
+    --   两边 paired 时都带 glow（副轨那颗的 glowColor 是空的 → 回落成白色描边）。
+    ui.haloHalf = n
+    for i = 1, 2 * n do
       ui.halo[i] = build(ballPrefab, '光晕控件', i)
       softEdge(ui.halo[i], true, 80)
     end
@@ -2521,6 +2526,19 @@ function M.create(opts)
   softEdge(ui.rb, ui.fancy ~= 0, 45)
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
+  -- ★ 待发球也要字母（本体 render.js：`drawBead(..., lb(1), ...)` 和 `lb(0)` —— **两颗都带字**）
+  if ui.letters ~= 0 then
+    for i = 1, 2 do
+      local c = build(hudPrefab, '待发球字母控件', i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      ui.loadedLetter[i] = c
+    end
+  end
+  -- 本体给"炮口那颗"画了 glow（drawBead 第 9 个参数 true）→ 白色描边
+  ui.loadedHalo = { build(ballPrefab, '待发球描边控件', 1), build(ballPrefab, '待发球描边控件', 2) }
+  for i = 1, 2 do softEdge(ui.loadedHalo[i], true, 60) end
 
   -- ⑪ HUD 文本（加半透明底板，免得字飘在背景上）
   ui.hudOrder = {}
@@ -2704,7 +2722,7 @@ function M.sync(ui, sc, st)
       if ui.halo[i] then
         if ui.fancy ~= 0 and b.pairGlow then
           -- ★ 用**空心圆**素材画成细环（实心圆画 2.1× 会像"球变大了" —— 用户一眼看出不对）
-          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. 'cc', ui.artRing)
+          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r + V.haloPad, b.pairGlow .. 'cc', ui.artRing)
         else
           setVisible(ui, ui.halo[i], false)
         end
@@ -2736,6 +2754,13 @@ function M.sync(ui, sc, st)
     if e then
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
+      -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
+      local eh = ui.halo and ui.haloHalf and ui.halo[ui.haloHalf + i]
+      if eh and ui.fancy ~= 0 then
+        placeBead(ui, eh, cx, cy, e.x, e.y, e.r + V.haloPad, '#ffffffcc', ui.artRing)
+      elseif eh then
+        setVisible(ui, eh, false)
+      end
       -- ★ 绑定小球上的字母（本体副轨那颗也画字母）
       local lc = ui.elimLetter and ui.elimLetter[i]
       if lc then
@@ -2761,6 +2786,7 @@ function M.sync(ui, sc, st)
     else
       setVisible(ui, ui.elim[i], false)
       if ui.elimLetter and ui.elimLetter[i] then setVisible(ui, ui.elimLetter[i], false) end
+      if eh then setVisible(ui, eh, false) end
     end
   end
   -- 读完的球（或整段被消掉）：让它的绑定小球"炸开淡出"再消失
@@ -2869,12 +2895,38 @@ function M.sync(ui, sc, st)
       end
     end
     -- 两颗待发球：炮口那颗在前（+0.8R，半径 ×1.0）、待命那颗在后（−0.7R，半径 ×0.8）
+    -- （本体 render.js drawRibosome 原文：`bR = (mode==='insert') ? mt.R : mt.r`）
     local bR = (sc.mode == 'insert') and mt.R or mt.r
     local b1, b2 = rb.loaded and rb.loaded[1], rb.loaded and rb.loaded[2]
-    placeBead(ui, ui.loaded[1], cx, cy,
-      rb.x + ax * R * 0.8, rb.y + ay * R * 0.8, bR, baseColor(b1), artIdOf(ui, b1))
-    placeBead(ui, ui.loaded[2], cx, cy,
-      rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), artIdOf(ui, b2))
+    local lx1, ly1 = rb.x + ax * R * 0.8, rb.y + ay * R * 0.8
+    local lx2, ly2 = rb.x - ax * R * 0.7, rb.y - ay * R * 0.7
+    placeBead(ui, ui.loaded[1], cx, cy, lx1, ly1, bR, baseColor(b1), artIdOf(ui, b1))
+    placeBead(ui, ui.loaded[2], cx, cy, lx2, ly2, bR * 0.8, baseColor(b2), artIdOf(ui, b2))
+    -- ★ 两颗待发球的字母（本体 lb(1) / lb(0) 都画）
+    for k = 1, 2 do
+      local lc = ui.loadedLetter and ui.loadedLetter[k]
+      if lc then
+        local base = (k == 1) and b1 or b2
+        local rr = (k == 1) and bR or bR * 0.8
+        local xx = (k == 1) and lx1 or lx2
+        local yy = (k == 1) and ly1 or ly2
+        local d2 = 2 * rr
+        place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
+        lc.text = tostring(base or '')
+        lc.fontSize = math.max(8, math.floor(rr * V.letterScale))
+        lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
+        setVisible(ui, lc, true)
+      end
+    end
+    -- ★ 炮口那颗的白色描边（本体那次 drawBead 的 glow 参数是 true）
+    local lh = ui.loadedHalo
+    if lh and ui.fancy ~= 0 then
+      placeBead(ui, lh[1], cx, cy, lx1, ly1, bR + V.haloPad, '#ffffffcc', ui.artRing)
+      setVisible(ui, lh[2], false)
+    elseif lh then
+      setVisible(ui, lh[1], false)
+      setVisible(ui, lh[2], false)
+    end
   end
 
   -- ---- 开火后坐（stats.fired 涨了就弹一下）----
@@ -3200,7 +3252,8 @@ local function adoptImageId(root)
       local ch = kids[i]
       local id = ch and ch.imageId
       local t = typeof and typeof(ch) or nil
-      if id ~= nil and type(t) == 'string' and t:find('Image', 1, true) then
+      -- ★ 只认**正整数**：0 表示"没配图"（真机/假宿主都会这么给），捡了 0 等于没设 → 全画成"?"
+      if type(id) == 'number' and id > 0 and type(t) == 'string' and t:find('Image', 1, true) then
         found[#found + 1] = { id = id, name = tostring(ch.name), t = t }
       end
       walk(ch, depth + 1)
