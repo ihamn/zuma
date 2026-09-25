@@ -312,6 +312,13 @@ function METHODS:RemoveNavigationEventListeners(eventType) self.navListeners[eve
 function METHODS:SetImage(imageSource, imageId)
   rawset(self, 'imageSource', imageSource)   -- imageSource/imageId 是只读字段
   rawset(self, 'imageId', imageId)
+  -- ★ 统计"改过素材"的次数：真机上写死素材 id（比如 1..5）会让控件画成"?"，
+  --   素材未配置时**一次都不该调** —— 测试用这个计数钉住（见 test_prefabs/test_visuals）。
+  local h = self.__host
+  if h then
+    h.stats.setImage = (h.stats.setImage or 0) + 1
+    h.lastImageId = imageId
+  end
   return self
 end
 function METHODS:SetSoftEdgeWidth(wx, wy) self.softEdgeWidthX, self.softEdgeWidthY = wx, wy; return self end

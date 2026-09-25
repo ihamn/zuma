@@ -2636,14 +2636,14 @@ function M.sync(ui, sc, st)
         for i = 1, #ui.caveGlow do
           local k = 1 + 0.16 * i          -- 1.16 / 1.32 / 1.48：贴着本体那一圈，不要铺开一大片
           local glow = ui.caveGlow[i]
-          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1], 1)
+          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1])
           -- 呼吸：慢慢放大缩小，让"洞口"看着是活的
           setScaleRaw(glow, 1 + 0.05 * math.sin((ui.t + i * 0.35) * 2.4))
         end
       else
         for i = 1, #ui.caveGlow do setVisible(ui, ui.caveGlow[i], false) end
       end
-      placeBead(ui, ui.cave, cx, cy, e.x, e.y, R, C.caveCore, 1)
+      placeBead(ui, ui.cave, cx, cy, e.x, e.y, R, C.caveCore)
       place(ui, ui.caveLabel, cx, cy, e.x, e.y + R + 14 * (mt.scale or 1), 160, 28, 0)
     end
   end
@@ -2669,7 +2669,7 @@ function M.sync(ui, sc, st)
       -- 光晕：读出/配错才亮（本体 drawBead 的 glow / pairGlow）
       if ui.halo[i] then
         if ui.fancy ~= 0 and b.pairGlow then
-          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. '8c', 1)
+          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. '8c')
         else
           setVisible(ui, ui.halo[i], false)
         end
@@ -2809,13 +2809,13 @@ function M.sync(ui, sc, st)
       rb.x + ax * (R + V.aimLen * (mt.scale or 1)), rb.y + ay * (R + V.aimLen * (mt.scale or 1)),
       math.max(1, V.aimWidth * (mt.scale or 1)), C.aim)
     -- 核糖体本体
-    placeBead(ui, ui.rb, cx, cy, rb.x, rb.y, R, C.rbBody, 1)
+    placeBead(ui, ui.rb, cx, cy, rb.x, rb.y, R, C.rbBody)
     -- 开火冷却环：径向填充，满了就该能打了（本体没有这个，是我们加的"信息量美化"）
     if ui.cd then
       if ui.fancy ~= 0 and rb.cooldown and rb.cooldown > 0.001 then
         local total = (CFG.DESIGN and CFG.DESIGN.fireCooldown) or 0.16
         local p = 1 - math.min(1, rb.cooldown / total)
-        placeBead(ui, ui.cd, cx, cy, rb.x, rb.y, R * 1.45, C.cd, 1)
+        placeBead(ui, ui.cd, cx, cy, rb.x, rb.y, R * 1.45, C.cd)
         ui.cd:SetFillRadial360(Enum.ImageFillRadialType.Top, p)
       else
         setVisible(ui, ui.cd, false)

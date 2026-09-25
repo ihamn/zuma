@@ -121,4 +121,36 @@ H.eq(GAME.prefabs.hud, 1073741850, '认出文本框模板 = 1073741850')
 H.eq(GAME.prefabs.cursor, 1073741860, '认出光标检测区域模板 = 1073741860')
 H.truthy(GAME.ui and #GAME.ui.balls > 0, '球池照常建出来：' .. tostring(GAME.ui and #GAME.ui.balls))
 
+-- ⑨ ★★ 素材：没配 `art` 时**一次 SetImage 都不许调**。
+--    真机踩过两次：写死 SetImage(1..5) → 每颗球画成"?"；后来只改了一半（洞穴光晕/核糖体/
+--    冷却环还写死 1）→ 仍然"一堆问号"。这条断言就是钉死这个。
+do
+  local h9 = MOCK.newHost({ w = 900, h = 900 })
+  h9.prefabs[1] = 'image'
+  h9.prefabs[2] = 'textbox'
+  h9.prefabs[3] = 'cursorarea'
+  h9.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0, diag = 0 }
+  MOCK.install(h9)
+  h9.scriptObj.object = h9.root
+  h9.mount(GAME)
+  H.eq(GAME.error, nil, '不配素材也能跑：' .. tostring(GAME.error))
+  H.eq(h9.stats.setImage or 0, 0, '★ 没配 art → SetImage 调用次数必须是 0（否则真机画成"?"）')
+end
+
+-- ⑩ 配了 art 时才按碱基换图（这时候才该调 SetImage）
+do
+  local h10 = MOCK.newHost({ w = 900, h = 900 })
+  h10.prefabs[1] = 'image'
+  h10.prefabs[2] = 'textbox'
+  h10.prefabs[3] = 'cursorarea'
+  h10.params = { levelIndex = 8, ballCount = 16, shotCount = 4, seed = 4242, autoNext = 0,
+                 art = 'A:1001,U:1002,G:1003,C:1004,T:1005' }
+  MOCK.install(h10)
+  h10.scriptObj.object = h10.root
+  h10.mount(GAME)
+  H.eq(GAME.error, nil, '配了素材能跑：' .. tostring(GAME.error))
+  H.truthy((h10.stats.setImage or 0) > 0, '配了 art → 会调 SetImage（次数 ' .. tostring(h10.stats.setImage) .. '）')
+  H.truthy(GAME.ui.art and GAME.ui.art['A'] == 1001, 'art 参数被解析进 ui.art：A=1001')
+end
+
 H.finish()
