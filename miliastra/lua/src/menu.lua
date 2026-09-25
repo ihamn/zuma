@@ -11,22 +11,25 @@ local CFG = require('config')
 
 local M = {}
 
--- 菜单条目：新手关用关卡全名，核心关带序号（本体 main.js 原文）
---   label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name))
+-- 菜单条目：**优先读关卡自己的 group**（经典祖玛那组就是这么来的）；
+-- 没写的仍按老规矩分：新手关（前 tutorialCount 个）/ 核心关 —— 现有 10 关的显示一个字不变。
+-- （和本体 main.js 的 menuItems 一一对应，进对拍）
 function M.items(levels, tutorialCount)
   local out = {}
   for i = 1, #levels do
     local l = levels[i]
     local tut = i <= (tutorialCount or 0)
     local label
-    if tut then
+    if l.group then
+      label = l.name or l.short
+    elseif tut then
       label = l.name or l.short
     else
       label = tostring(i) .. ' ' .. (l.short or l.name)
     end
     out[i] = {
       index = i - 1,                       -- 本体是 0 基；这里保留 0 基，方便和本体逐值对拍
-      group = tut and '新手关' or '核心关',
+      group = l.group or (tut and '新手关' or '核心关'),
       label = label,
     }
   end

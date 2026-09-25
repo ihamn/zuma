@@ -148,4 +148,28 @@ function M.isComplement(tRNA, mRNA)
   return false
 end
 
+-- ==================== 经典祖玛专用配色（DESIGN.md §66.6）====================
+-- 奇匠要求："原版球的颜色不要沿用，重新搞"。
+-- ★ 内部 token 仍是 A/U/C/G/T（规则/对拍/控件池一律不动），只换**显示颜色**。
+M.CLASSIC_COLOR = {
+  A = '#e8453c',   -- 红
+  U = '#f2c53d',   -- 黄
+  G = '#3b7ddd',   -- 蓝
+  C = '#3fbf6f',   -- 绿
+  T = '#9a5bd6',   -- 紫
+}
+M.CLASSIC_INK = {
+  A = '#2a0705', U = '#2b2205', G = '#04122b', C = '#052a12', T = '#1b0733',
+}
+
+-- 按 ruleset 取色：'classic' 用经典那套，其它（含缺省）用 RNA 碱基色
+function M.colorOf(base, rules)
+  local t = (rules == 'classic') and M.CLASSIC_COLOR or M.BASE_COLOR
+  return t[base] or '#ffffff'
+end
+function M.inkOf(base, rules)
+  local t = (rules == 'classic') and M.CLASSIC_INK or M.BASE_INK
+  return t[base] or '#101820'
+end
+
 return M

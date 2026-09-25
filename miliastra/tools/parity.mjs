@@ -33,6 +33,10 @@ for (const s of SEEDS) {
 for (const sc of [0.44, 0.7, 0.82, 1, 1.34]) add(`metrics ${sc}`);
 for (const [w, h] of VIEWS) add(`view ${w} ${h}`);
 
+// --- 经典祖玛（§66）：同色连续段规则 + 专用配色 ---
+//   参数是**数字编码**：1=A 2=U 3=G 4=C 5=T（对拍两端都按数字解析参数，字符串会变 nil）
+for (const s of ['1', '11', '111', '1111', '12221', '111333111', '12341234']) add(`classic ${s}`);
+
 // --- 开始菜单（§61）：条目表 / 布局 / 局内按钮 + 命中判定 ---
 for (const [w, h] of VIEWS) {
   for (const sc of [0.82, 1, 1.42]) {

@@ -70,6 +70,36 @@ function M.clearableRuns(chain)
   return out
 end
 
+-- ==================== 经典祖玛（DESIGN.md §66）====================
+-- ★★ 纯追加：上面的 computeRuns / clearableRuns（RNA 配对玩法用的）**一个字都没动**。
+-- 规则差异：RNA 是"已配对标记的球、连续段长度是 3 的倍数"；经典是"**同色**连续段 ≥ 3"。
+-- 和 src/run.js 的 classicRuns / classicClearable 一一对应（进对拍）。
+function M.classicRuns(chain)
+  local balls = chain.balls
+  local runs = {}
+  local cur = nil
+  for i = 1, #balls do
+    local b = balls[i]
+    if cur == nil or cur.base ~= b.base then
+      cur = { i0 = i, i1 = i, len = 1, base = b.base, key = b.id }
+      runs[#runs + 1] = cur
+    else
+      cur.i1 = i
+      cur.len = cur.len + 1
+    end
+  end
+  return runs
+end
+
+function M.classicClearable(chain)
+  local out = {}
+  local runs = M.classicRuns(chain)
+  for i = 1, #runs do
+    if runs[i].len >= 3 then out[#out + 1] = runs[i] end
+  end
+  return out
+end
+
 -- 给渲染用的读数
 function M.runStatus(run)
   local mod = run.len % 3 == 0

@@ -236,6 +236,30 @@ function M.isComplement(tRNA, mRNA)
   return false
 end
 
+-- ==================== 经典祖玛专用配色（DESIGN.md §66.6）====================
+-- 奇匠要求："原版球的颜色不要沿用，重新搞"。
+-- ★ 内部 token 仍是 A/U/C/G/T（规则/对拍/控件池一律不动），只换**显示颜色**。
+M.CLASSIC_COLOR = {
+  A = '#e8453c',   -- 红
+  U = '#f2c53d',   -- 黄
+  G = '#3b7ddd',   -- 蓝
+  C = '#3fbf6f',   -- 绿
+  T = '#9a5bd6',   -- 紫
+}
+M.CLASSIC_INK = {
+  A = '#2a0705', U = '#2b2205', G = '#04122b', C = '#052a12', T = '#1b0733',
+}
+
+-- 按 ruleset 取色：'classic' 用经典那套，其它（含缺省）用 RNA 碱基色
+function M.colorOf(base, rules)
+  local t = (rules == 'classic') and M.CLASSIC_COLOR or M.BASE_COLOR
+  return t[base] or '#ffffff'
+end
+function M.inkOf(base, rules)
+  local t = (rules == 'classic') and M.CLASSIC_INK or M.BASE_INK
+  return t[base] or '#101820'
+end
+
 return M
 end
 
@@ -961,6 +985,36 @@ function M.clearableRuns(chain)
   return out
 end
 
+-- ==================== 经典祖玛（DESIGN.md §66）====================
+-- ★★ 纯追加：上面的 computeRuns / clearableRuns（RNA 配对玩法用的）**一个字都没动**。
+-- 规则差异：RNA 是"已配对标记的球、连续段长度是 3 的倍数"；经典是"**同色**连续段 ≥ 3"。
+-- 和 src/run.js 的 classicRuns / classicClearable 一一对应（进对拍）。
+function M.classicRuns(chain)
+  local balls = chain.balls
+  local runs = {}
+  local cur = nil
+  for i = 1, #balls do
+    local b = balls[i]
+    if cur == nil or cur.base ~= b.base then
+      cur = { i0 = i, i1 = i, len = 1, base = b.base, key = b.id }
+      runs[#runs + 1] = cur
+    else
+      cur.i1 = i
+      cur.len = cur.len + 1
+    end
+  end
+  return runs
+end
+
+function M.classicClearable(chain)
+  local out = {}
+  local runs = M.classicRuns(chain)
+  for i = 1, #runs do
+    if runs[i].len >= 3 then out[#out + 1] = runs[i] end
+  end
+  return out
+end
+
 -- 给渲染用的读数
 function M.runStatus(run)
   local mod = run.len % 3 == 0
@@ -1374,6 +1428,8 @@ function M.assembleScene(level, view, seed)
     shields = 0, cores = {}, nextCoreId = 1, lastReaction = nil, reactionFlash = 0,
     stopAdding = (level.stopAdding == true),
     mode = DESIGN.defaultMode, modeFlash = 0,
+    -- 经典祖玛（DESIGN §66）：rules = 'classic' 走"同色连续≥3消"，与 RNA 玩法完全分开
+    rules = level.rules or 'rna',
     lives = DESIGN.startLives, score = 0, losing = false, gameOver = false, won = false,
     runsInfo = {}, lastClear = nil,
     stats = { fired = 0, pairs = 0, mismatches = 0, merges = 0, cleared = 0, codons = 0, lost = 0,
@@ -1410,6 +1466,14 @@ function M.assembleScene(level, view, seed)
   rb.loaded[2] = RB.drawBase(rb)
   M.syncBeads(sc)
   return sc
+end
+
+-- 经典祖玛（§66）：规则函数按 ruleset 选 —— RNA 用"已配对 + 3 的倍数"，经典用"同色 ≥3"。
+local function clearableFor(sc)
+  return (sc.rules == 'classic') and RUN.classicClearable(sc.chain) or RUN.clearableRuns(sc.chain)
+end
+local function refreshRuns(sc)
+  sc.runsInfo = (sc.rules == 'classic') and RUN.classicRuns(sc.chain) or RUN.computeRuns(sc.chain)
 end
 
 -- 同步"被规则读到"的位置量（渲染用的颜色/描边不在这里，但 pairGlow 留着给 UI 用）
@@ -1454,6 +1518,14 @@ local function resolveHit(sc, p, hit)
   local ev = { type = '', index = hit.index, x = hit.x, y = hit.y, base = p.base,
                target = ball.base, mode = p.mode }
   if sc.mode == 'seven' then error('七球模式未移植') end
+  if sc.rules == 'classic' then
+    ev.type = 'insert'
+    local mgc = M.startMerge(sc, ball, p.base, hit.x, hit.y)
+    mgc.elem = p.elem or nil
+    ev.willMerge = true
+    pushEvent(sc, ev)
+    return ev
+  end
   if p.mode == 'insert' then
     ev.type = 'insert'
     local mg = M.startMerge(sc, ball, p.base, hit.x, hit.y)
@@ -1621,7 +1693,7 @@ local function settle(sc)
   local total = 0
   if not sc.noClear then
     for _ = 1, 128 do
-      local ei = RUN.findExplosion(sc.chain)
+      local ei = (sc.rules == 'classic') and -1 or RUN.findExplosion(sc.chain)
       if ei >= 0 then
         total = total + explodeAt(sc, ei)
       else
@@ -1631,7 +1703,7 @@ local function settle(sc)
       end
     end
   end
-  sc.runsInfo = RUN.computeRuns(sc.chain)
+  refreshRuns(sc)
 
   -- §64 读出全部：判据用 mark ~= 0（读对读错都算"打中过"）
   if sc.goalMatchAll and not sc.losing and not sc.gameOver and not sc.won and #sc.chain.balls > 0 then
@@ -1657,7 +1729,7 @@ function M.clearImmediately(sc)
   local total = 0
   local minPos = -1
   for _ = 1, 64 do
-    local hits = RUN.clearableRuns(sc.chain)
+    local hits = clearableFor(sc)
     if #hits == 0 then break end
     for i = #hits, 1, -1 do
       local run = hits[i]
@@ -1667,7 +1739,7 @@ function M.clearImmediately(sc)
   end
   if total > 0 then
     pushBack(sc, total, minPos)
-    sc.runsInfo = RUN.computeRuns(sc.chain)
+    refreshRuns(sc)
   end
   return total
 end
@@ -1685,7 +1757,7 @@ function M.eliminateRun(sc, run)
   if not sc.won and sTgt > 0 and sc.score >= sTgt then win(sc, 'score') end
   sc.lastClear = { i0 = run.i0, i1 = run.i1, len = run.len }
   pushEvent(sc, { type = 'clear', len = run.len, i0 = run.i0, i1 = run.i1 })
-  sc.runsInfo = RUN.computeRuns(sc.chain)
+  refreshRuns(sc)
   return removed
 end
 
@@ -1894,6 +1966,8 @@ M.LEVELS = {
     id = "t1-pair",
     name = "① 配对",
     short = "配对",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -1916,6 +1990,8 @@ M.LEVELS = {
     id = "t2-multiple",
     name = "② 三的倍数",
     short = "三的倍数",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -1938,6 +2014,8 @@ M.LEVELS = {
     id = "t3-wrong",
     name = "③ 配错的代价",
     short = "配错的代价",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -1960,6 +2038,8 @@ M.LEVELS = {
     id = "t4-insert",
     name = "④ 加球",
     short = "加球",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -1982,6 +2062,8 @@ M.LEVELS = {
     id = "t5-deadball",
     name = "⑤ 死球",
     short = "死球",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -2004,6 +2086,8 @@ M.LEVELS = {
     id = "t6-cave",
     name = "⑥ 洞穴",
     short = "洞穴",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -2026,6 +2110,8 @@ M.LEVELS = {
     id = "t7-mix",
     name = "⑦ 综合",
     short = "综合",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -2048,6 +2134,8 @@ M.LEVELS = {
     id = "spiral-outer",
     name = "螺旋 · 出球道在外",
     short = "螺旋·外",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -2070,6 +2158,8 @@ M.LEVELS = {
     id = "cross-return",
     name = "交叉演示 · 遮挡与桥",
     short = "交叉桥",
+    rules = "rna",
+    group = nil,
     spineKind = 1,
     layersFromJunction = true,
     railOrder = "spawn-outer",
@@ -2092,6 +2182,8 @@ M.LEVELS = {
     id = "endless",
     name = "无尽 · 无限出球",
     short = "无尽",
+    rules = "rna",
+    group = nil,
     spineKind = 0,
     layersFromJunction = false,
     railOrder = "spawn-outer",
@@ -2100,6 +2192,30 @@ M.LEVELS = {
     prefill = 18,
     ballBudget = 0,
     scoreTarget = 500,
+    still = false,
+    centerChain = false,
+    noClear = false,
+    goal = nil,
+    speed = nil,
+    startWpFrac = nil,
+    bases = nil,
+    script = nil,
+    hint = nil,
+  },
+  {
+    id = "classic-spiral",
+    name = "经典 · 螺旋",
+    short = "经典螺旋",
+    rules = "classic",
+    group = "经典祖玛",
+    spineKind = 0,
+    layersFromJunction = false,
+    railOrder = "spawn-outer",
+    turns = nil,
+    innerRatio = nil,
+    prefill = 18,
+    ballBudget = 40,
+    scoreTarget = math.huge,
     still = false,
     centerChain = false,
     noClear = false,
@@ -2706,8 +2822,10 @@ function M.sync(ui, sc, st)
   ui.t = ui.t + dt
   ui.stats.writes = 0
 
+  -- ★ 经典祖玛（§66）：经典关用**专用配色**（奇匠要求"原版球的颜色不要沿用"）。
+  --   一处收口：所有"球色"都经过它 ⇒ 只改这一行就全局生效。
   local function baseColor(b)
-    return CFG.BASE_COLOR[b] or '#ffffff'
+    return CFG.colorOf(b, sc.rules) or '#ffffff'
   end
 
   -- ---- 动效推进（先推进，再让本帧的静态同步覆盖"非动画字段"）----
@@ -2793,13 +2911,18 @@ function M.sync(ui, sc, st)
       end
 
       -- 字母：本体把 label 画在球面上
+      -- ★ 经典祖玛（§66）：原版是**纯色球、没有字母** ⇒ 经典关不画字母（隐藏该控件）
       if ui.letter[i] then
-        local lc = ui.letter[i]
-        local ink = b.wrongMark and (CFG.WRONG_INK or C.letterOnLight) or (CFG.BASE_INK[b.base] or C.letterOnLight)
-        place(ui, lc, cx, cy, b.x, b.y, d, d, 0)
-        lc.text = tostring(b.label or b.base or '')
-        lc.fontSize = math.max(8, math.floor(b.r * V.letterScale))
-        lc.fontColor = hexColor(ink)
+        if sc.rules == 'classic' then
+          setVisible(ui, ui.letter[i], false)
+        else
+          local lc = ui.letter[i]
+          local ink = b.wrongMark and (CFG.WRONG_INK or C.letterOnLight) or (CFG.inkOf(b.base, sc.rules) or C.letterOnLight)
+          place(ui, lc, cx, cy, b.x, b.y, d, d, 0)
+          lc.text = tostring(b.label or b.base or '')
+          lc.fontSize = math.max(8, math.floor(b.r * V.letterScale))
+          lc.fontColor = hexColor(ink)
+        end
       end
     else
       setVisible(ui, c, false)
@@ -4302,22 +4425,25 @@ local CFG = require('config')
 
 local M = {}
 
--- 菜单条目：新手关用关卡全名，核心关带序号（本体 main.js 原文）
---   label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name))
+-- 菜单条目：**优先读关卡自己的 group**（经典祖玛那组就是这么来的）；
+-- 没写的仍按老规矩分：新手关（前 tutorialCount 个）/ 核心关 —— 现有 10 关的显示一个字不变。
+-- （和本体 main.js 的 menuItems 一一对应，进对拍）
 function M.items(levels, tutorialCount)
   local out = {}
   for i = 1, #levels do
     local l = levels[i]
     local tut = i <= (tutorialCount or 0)
     local label
-    if tut then
+    if l.group then
+      label = l.name or l.short
+    elseif tut then
       label = l.name or l.short
     else
       label = tostring(i) .. ' ' .. (l.short or l.name)
     end
     out[i] = {
       index = i - 1,                       -- 本体是 0 基；这里保留 0 基，方便和本体逐值对拍
-      group = tut and '新手关' or '核心关',
+      group = l.group or (tut and '新手关' or '核心关'),
       label = label,
     }
   end

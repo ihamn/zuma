@@ -1060,3 +1060,31 @@ run-all.mjs 原来：
 - **明确不做**：原版 Deluxe 的道具（倒放/慢速/精准）——那是另一个决定。
 
 实施顺序（未开始）：DESIGN ✓ → **本体**（`run.js` 加 classic 规则 + `scene.js` 射击分支 + `render.js` 隐藏三消道 + `levels.js` 加 1 关 + 本体测试）→ **移植**（`run.lua`/`board.lua`/`ui.lua` + 对拍 `classic` 组）→ 菜单按 `group` 分组 → 手册。
+---
+
+## 38. 经典祖玛：移植侧同步完成（DESIGN §66 全部落地）
+
+接 §37 的本体实现，移植侧同步（同样**只加不改**）：
+
+| 文件 | 改动 |
+|---|---|
+| `lua/src/config.lua` | **追加** `CLASSIC_COLOR`/`CLASSIC_INK` + `colorOf/inkOf`（插在 `return M` 之前） |
+| `lua/src/run.lua` | **追加** `classicRuns`/`classicClearable`（同色 ≥3；现有 `computeRuns`/`clearableRuns` 没动） |
+| `lua/src/board.lua` | `rules = level.rules or 'rna'`；`clearableFor/refreshRuns` 按 ruleset 选；`resolveHit` 最前面加经典分支（无条件并入）；`settle` 里经典不判爆炸 |
+| `lua/src/ui.lua` | `baseColor` 收口成 `CFG.colorOf(b, sc.rules)`（**一行改全局**）；经典关隐藏球面字母 |
+| `lua/src/menu.lua` | `M.items` **优先读关卡自己的 `group`**（缺省仍新手/核心） |
+| `tools/export-levels.mjs` | 关卡字段**白名单**里补上 `rules` / `group`（⚠ 漏了它移植侧永远看到 `rules='rna'` —— 实测踩过一次：导出物里 classic 关还是 rna） |
+| `tools/lib/parity-js.mjs` | 菜单分组同步 + 新增 `classic` 命令 |
+| `lua/parity/run.lua` | 新增 `classic` handler |
+
+**对拍**：81339 → 83199（关卡数据多一关）→ **83614 个数值**（新增 classic 规则 + 配色），**零差异** ✓。
+
+**踩到的两个坑（都记下来）**：
+1. **导出的字段白名单**：我在 `export-levels.mjs` 里加了两行输出，但**忘了往 `toRow` 的白名单里补字段** ⇒ 导出物里经典关仍是 `rules = "rna"`。**加字段要同时改两处**（和 `trackSegments` 默认值写在两处是同一类坑，见 §35）。
+2. **对拍参数是"按数字解析"的**：`classic AAA` 这种字符串参数在 Lua 侧变成 nil（11 处不一致）。
+   改成**数字编码**（1=A 2=U 3=G 4=C 5=T）后两端一致 —— 写新的对拍命令时，参数要么是数字、要么是"只在 JS 侧用"。
+
+**移植侧测试**：`test_levels.lua` 的关卡数 10 → 11（多一个经典关）；其余 RNA 测试 386 项**一项没变**。
+
+验证：`run-all` 全绿（对拍 83614 值零差异）；游戏目录与仓库逐字节一致（183,314 字节）。
+⚠ **仍未做**：手动试玩经典关（真机手感），以及"经典组"在菜单里的视觉效果 —— 前者要真机、后者我可以出图。

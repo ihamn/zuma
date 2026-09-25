@@ -8,11 +8,12 @@
 // JS 侧统一 **+1**，让两边的输出可以直接逐字比对。
 
 import { makeRng } from '../../../src/rng.js';
-import { BASES, metrics, viewFor, menuLayout, menuButtonRect } from '../../../src/config.js';
+import { BASES, metrics, viewFor, menuLayout, menuButtonRect, colorOf, inkOf } from '../../../src/config.js';
 import { ALL_LEVELS, TUTORIALS } from '../../../src/levels.js';
 import * as GEO from '../../../src/geometry.js';
 import * as SP from '../../../src/spines.js';
 import * as RUN from '../../../src/run.js';
+import { classicRuns, classicClearable } from '../../../src/run.js';
 import * as CH from '../../../src/chain.js';
 import * as PJ from '../../../src/projectile.js';
 import * as SCENE from '../../../src/scene.js';
@@ -73,7 +74,19 @@ export function evalCommands(lines) {
       const m = metrics(a[0]);
       emit('metrics', a[0], m.p, m.R, m.r, m.d, m.linkGap, m.diameterRatio, m.areaRatio);
 
-    } else if (cmd === 'menu') {
+    } else if (cmd === 'classic') {
+    // 经典祖玛（§66）：同色连续段的规则 + 专用配色 —— 和移植侧 run.lua/config.lua 逐值对拍。
+    // ⚠ 参数走**数字编码**（A=1 U=2 G=3 C=4 T=5）：对拍两端都把参数按数字解析，
+    //   传字符串的话 Lua 侧会拿到 nil（踩过：11 处不一致，根因就是这个）。
+    const s = String(toks[0]);
+    const chain = { balls: [] };
+    for (let i = 0; i < s.length; i++) chain.balls.push({ id: i + 1, base: BASES[Number(s[i]) - 1], wp: i, dock: 1 });
+    const runs = classicRuns(chain);
+    emit('classic.runs', runs.length, ...runs.map((r) => r.len));
+    emit('classic.clear', classicClearable(chain).length);
+    for (const b of BASES) emit('classic.color', b, colorOf(b, 'classic'), inkOf(b, 'classic'), colorOf(b, 'rna'));
+
+  } else if (cmd === 'menu') {
     // 菜单布局（本体 config.js menuLayout / menuButtonRect）——和移植侧 menu.lua 逐值对拍。
     // 条目表按本体 main.js rebuild() 里那段映射原文算（新手关用全名、核心关带序号）。
     const [w, h, scale, mode] = a;
@@ -81,10 +94,12 @@ export function evalCommands(lines) {
     const mt = metrics(scale);
     const items = ALL_LEVELS.map((l, i) => {
       const tut = i < TUTORIALS.length;
+      // ★ 2026-09-25：分组**优先读关卡自己的 group**（经典祖玛第三组就是这么来的），
+      //   和移植侧 menu.lua 的 M.items 一一对应。（只改这里会让对拍报"第 10 列 js=2 lua=3"）
       return {
         index: i,
-        group: tut ? '新手关' : '核心关',
-        label: tut ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name)),
+        group: l.group || (tut ? '新手关' : '核心关'),
+        label: (l.group || tut) ? (l.name || l.short) : ((i + 1) + ' ' + (l.short || l.name)),
       };
     });
     if (mode === 0) {                              // 条目表

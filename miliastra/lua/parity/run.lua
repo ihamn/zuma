@@ -77,6 +77,30 @@ handlers.metrics = function(a)
   emit('metrics', a[1], m.p, m.R, m.r, m.d, m.linkGap, m.diameterRatio, m.areaRatio)
 end
 
+-- 经典祖玛（§66）：同色连续段规则 + 专用配色 —— 和 JS 侧 parity-js.mjs 的 'classic' 分支一一对应。
+--   参数是一串碱基 token（如 "AAACCCAAA"）：逐字建一颗链子，然后比"段"和"该不该消"。
+handlers.classic = function(a)
+  -- ⚠ 参数是**数字编码**（1=A 2=U 3=G 4=C 5=T）：对拍两端都按数字解析参数，
+  --   直接传碱基字母的话 Lua 这边拿到的是 nil（踩过：11 处不一致）。
+  local s = tostring(a[1] or '')
+  local bases0 = CFG.BASES
+  local chain = { balls = {} }
+  for i = 1, #s do
+    local d = tonumber(s:sub(i, i)) or 1
+    chain.balls[i] = { id = i, base = bases0[d] or 'A', wp = i, dock = 1 }
+  end
+  local runs = RUN.classicRuns(chain)
+  local lens = {}
+  for i = 1, #runs do lens[i] = runs[i].len end
+  emit('classic.runs', #runs, table.unpack(lens))
+  emit('classic.clear', #RUN.classicClearable(chain))
+  local bases = CFG.BASES
+  for i = 1, #bases do
+    local b = bases[i]
+    emit('classic.color', b, CFG.colorOf(b, 'classic'), CFG.inkOf(b, 'classic'), CFG.colorOf(b, 'rna'))
+  end
+end
+
 -- 开始菜单（§61）：和 JS 侧 parity-js.mjs 的 'menu' 分支一一对应。
 --   布局用的是**移植侧** menu.lua（本体 config.js 的 1:1 移植），对拍就是证明它没抄错。
 --   mode: 0 = 条目表、1 = 布局、其它 = 局内按钮 + 命中判定（a[5..] 是坐标对）

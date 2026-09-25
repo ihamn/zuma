@@ -28,6 +28,10 @@ function toRow(level) {
     id: level.id,
     name: level.name || level.id,
     short: level.short || level.name || level.id,
+    // ★ 经典祖玛（DESIGN §66）：这两样是**玩法与菜单分组**的开关，必须原样带过来
+    //   （漏在白名单外 = 移植侧永远看到 rules='rna'，经典关会被当成 RNA 关跑 —— 实测踩过一次）
+    rules: level.rules || 'rna',
+    group: level.group || null,
     spineKind: spineKindOf(level),
     layersFromJunction: typeof level.layers === 'function',
     railOrder: level.railOrder || 'spawn-outer',
@@ -88,6 +92,10 @@ for (const r of rows) {
   lines.push('    id = ' + str(r.id) + ',');
   lines.push('    name = ' + str(r.name) + ',');
   lines.push('    short = ' + str(r.short) + ',');
+  // ★ 经典祖玛（DESIGN §66）：这两样必须导出，移植侧靠它们决定玩法与菜单分组
+  //   —— rules = 'classic' ⇒ 同色 ≥3 消；group ⇒ 菜单分组名（缺省按新手/核心分）
+  lines.push('    rules = ' + str(r.rules || 'rna') + ',');
+  lines.push('    group = ' + str(r.group) + ',');
   lines.push('    spineKind = ' + r.spineKind + ',');
   lines.push('    layersFromJunction = ' + (r.layersFromJunction ? 'true' : 'false') + ',');
   lines.push('    railOrder = ' + str(r.railOrder) + ',');

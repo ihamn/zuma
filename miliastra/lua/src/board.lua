@@ -204,6 +204,8 @@ function M.assembleScene(level, view, seed)
     shields = 0, cores = {}, nextCoreId = 1, lastReaction = nil, reactionFlash = 0,
     stopAdding = (level.stopAdding == true),
     mode = DESIGN.defaultMode, modeFlash = 0,
+    -- 经典祖玛（DESIGN §66）：rules = 'classic' 走"同色连续≥3消"，与 RNA 玩法完全分开
+    rules = level.rules or 'rna',
     lives = DESIGN.startLives, score = 0, losing = false, gameOver = false, won = false,
     runsInfo = {}, lastClear = nil,
     stats = { fired = 0, pairs = 0, mismatches = 0, merges = 0, cleared = 0, codons = 0, lost = 0,
@@ -240,6 +242,14 @@ function M.assembleScene(level, view, seed)
   rb.loaded[2] = RB.drawBase(rb)
   M.syncBeads(sc)
   return sc
+end
+
+-- 经典祖玛（§66）：规则函数按 ruleset 选 —— RNA 用"已配对 + 3 的倍数"，经典用"同色 ≥3"。
+local function clearableFor(sc)
+  return (sc.rules == 'classic') and RUN.classicClearable(sc.chain) or RUN.clearableRuns(sc.chain)
+end
+local function refreshRuns(sc)
+  sc.runsInfo = (sc.rules == 'classic') and RUN.classicRuns(sc.chain) or RUN.computeRuns(sc.chain)
 end
 
 -- 同步"被规则读到"的位置量（渲染用的颜色/描边不在这里，但 pairGlow 留着给 UI 用）
@@ -284,6 +294,14 @@ local function resolveHit(sc, p, hit)
   local ev = { type = '', index = hit.index, x = hit.x, y = hit.y, base = p.base,
                target = ball.base, mode = p.mode }
   if sc.mode == 'seven' then error('七球模式未移植') end
+  if sc.rules == 'classic' then
+    ev.type = 'insert'
+    local mgc = M.startMerge(sc, ball, p.base, hit.x, hit.y)
+    mgc.elem = p.elem or nil
+    ev.willMerge = true
+    pushEvent(sc, ev)
+    return ev
+  end
   if p.mode == 'insert' then
     ev.type = 'insert'
     local mg = M.startMerge(sc, ball, p.base, hit.x, hit.y)
@@ -451,7 +469,7 @@ local function settle(sc)
   local total = 0
   if not sc.noClear then
     for _ = 1, 128 do
-      local ei = RUN.findExplosion(sc.chain)
+      local ei = (sc.rules == 'classic') and -1 or RUN.findExplosion(sc.chain)
       if ei >= 0 then
         total = total + explodeAt(sc, ei)
       else
@@ -461,7 +479,7 @@ local function settle(sc)
       end
     end
   end
-  sc.runsInfo = RUN.computeRuns(sc.chain)
+  refreshRuns(sc)
 
   -- §64 读出全部：判据用 mark ~= 0（读对读错都算"打中过"）
   if sc.goalMatchAll and not sc.losing and not sc.gameOver and not sc.won and #sc.chain.balls > 0 then
@@ -487,7 +505,7 @@ function M.clearImmediately(sc)
   local total = 0
   local minPos = -1
   for _ = 1, 64 do
-    local hits = RUN.clearableRuns(sc.chain)
+    local hits = clearableFor(sc)
     if #hits == 0 then break end
     for i = #hits, 1, -1 do
       local run = hits[i]
@@ -497,7 +515,7 @@ function M.clearImmediately(sc)
   end
   if total > 0 then
     pushBack(sc, total, minPos)
-    sc.runsInfo = RUN.computeRuns(sc.chain)
+    refreshRuns(sc)
   end
   return total
 end
@@ -515,7 +533,7 @@ function M.eliminateRun(sc, run)
   if not sc.won and sTgt > 0 and sc.score >= sTgt then win(sc, 'score') end
   sc.lastClear = { i0 = run.i0, i1 = run.i1, len = run.len }
   pushEvent(sc, { type = 'clear', len = run.len, i0 = run.i0, i1 = run.i1 })
-  sc.runsInfo = RUN.computeRuns(sc.chain)
+  refreshRuns(sc)
   return removed
 end
 

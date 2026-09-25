@@ -577,8 +577,10 @@ function M.sync(ui, sc, st)
   ui.t = ui.t + dt
   ui.stats.writes = 0
 
+  -- ★ 经典祖玛（§66）：经典关用**专用配色**（奇匠要求"原版球的颜色不要沿用"）。
+  --   一处收口：所有"球色"都经过它 ⇒ 只改这一行就全局生效。
   local function baseColor(b)
-    return CFG.BASE_COLOR[b] or '#ffffff'
+    return CFG.colorOf(b, sc.rules) or '#ffffff'
   end
 
   -- ---- 动效推进（先推进，再让本帧的静态同步覆盖"非动画字段"）----
@@ -664,13 +666,18 @@ function M.sync(ui, sc, st)
       end
 
       -- 字母：本体把 label 画在球面上
+      -- ★ 经典祖玛（§66）：原版是**纯色球、没有字母** ⇒ 经典关不画字母（隐藏该控件）
       if ui.letter[i] then
-        local lc = ui.letter[i]
-        local ink = b.wrongMark and (CFG.WRONG_INK or C.letterOnLight) or (CFG.BASE_INK[b.base] or C.letterOnLight)
-        place(ui, lc, cx, cy, b.x, b.y, d, d, 0)
-        lc.text = tostring(b.label or b.base or '')
-        lc.fontSize = math.max(8, math.floor(b.r * V.letterScale))
-        lc.fontColor = hexColor(ink)
+        if sc.rules == 'classic' then
+          setVisible(ui, ui.letter[i], false)
+        else
+          local lc = ui.letter[i]
+          local ink = b.wrongMark and (CFG.WRONG_INK or C.letterOnLight) or (CFG.inkOf(b.base, sc.rules) or C.letterOnLight)
+          place(ui, lc, cx, cy, b.x, b.y, d, d, 0)
+          lc.text = tostring(b.label or b.base or '')
+          lc.fontSize = math.max(8, math.floor(b.r * V.letterScale))
+          lc.fontColor = hexColor(ink)
+        end
       end
     else
       setVisible(ui, c, false)
