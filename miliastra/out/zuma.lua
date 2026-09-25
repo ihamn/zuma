@@ -3781,16 +3781,24 @@ function G.startLevel(idx)
   --   三项一起报，才能分清到底是哪一环：源碱基有没有 → 文字写进去没 → 可见/字号对不对。
   do
     local rb = G.sc and G.sc.rb
-    local b1 = rb and rb.loaded and rb.loaded[1]
-    local b2 = rb and rb.loaded and rb.loaded[2]
-    say('待发球自检：源碱基 1=%s 2=%s', tostring(b1), tostring(b2))
     local ui = G.ui
-    if ui and ui.loadedLetter then
-      for k = 1, 2 do
-        local lc = ui.loadedLetter[k]
-        say('  字母 %s：文字=%s 可见=%s 字号=%s 位置=(%s,%s)', tostring(k),
-          lc and tostring(lc.text), lc and tostring(lc.visible), lc and tostring(lc.fontSize),
-          lc and string.format('%.0f', lc.anchoredPositionX), lc and string.format('%.0f', lc.anchoredPositionY))
+    local names = { '④炮口球', '③预备球' }     -- k=1 是炮口那颗、k=2 是身后那颗（本体 lb(1)/lb(0)）
+    for k = 1, 2 do
+      local src = rb and rb.loaded and rb.loaded[k]
+      local lc = ui and ui.loadedLetter and ui.loadedLetter[k]
+      -- ★ 一行里给出**完整对照**：源碱基 → 球颜色 → 控件文字/可见/字号/位置/控件尺寸
+      --   缺哪一环一眼可见（源=nil → 球会是白的；文字=空 → 没写进去；可见=false → 被藏了）
+      local ballHex = (src == nil) and '（源碱基 nil → 球会被画成白色！）' or '（有源）'
+      say('%s：源碱基=%s %s 球半径=%.1f', names[k], tostring(src), ballHex,
+        (k == 1) and ((G.sc.mode == 'insert') and G.sc.metrics.R or G.sc.metrics.r)
+          or (((G.sc.mode == 'insert') and G.sc.metrics.R or G.sc.metrics.r) * 0.8))
+      if lc then
+        say('   控件：文字=[%s] 可见=%s 字号=%s 框尺寸=%.1fx%.1f 位置=(%.0f,%.0f)',
+          tostring(lc.text), tostring(lc.visible), tostring(lc.fontSize),
+          lc.sizeDeltaX or -1, lc.sizeDeltaY or -1,
+          lc.anchoredPositionX or -999, lc.anchoredPositionY or -999)
+      else
+        say('   控件：**不存在**（ui.loadedLetter[%d] = nil，letters 关了？）', k)
       end
     end
   end
