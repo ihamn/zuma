@@ -390,17 +390,10 @@ function M.create(opts)
   for i = 1, 2 do softEdge(ui.loadedHalo[i], false, 0) end   -- 同理：环上不加柔边
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
-  -- ★ 待发球也要字母（本体 render.js：`drawBead(..., lb(1), ...)` 和 `lb(0)` —— **两颗都带字**）
-  --   放在最后建 → 一定盖在球和描边之上。
-  if ui.letters ~= 0 then
-    for i = 1, 2 do
-      local c = build(hudPrefab, '待发球字母控件', i)
-      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
-      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
-      c.enableOutline = false
-      ui.loadedLetter[i] = c
-    end
-  end
+  -- ★ 待发球的两颗字母**挪到最后再建**（见文件末尾 ⑫）：
+  --   真机上"后建的盖在上面"，所以要让它们压在所有游戏元素之上。
+  --   另外 ③ 预备球是本体里最小的球（半径 bR*0.8 ≈ 10.7 → 字号只有 12），
+  --   而本体用的是**粗体**，我们设不了粗体 → 给它加白描边 + 稍大一号，否则压在彩球上看不清。
 
   -- ⑪ HUD 文本（加半透明底板，免得字飘在背景上）
   ui.hudOrder = {}
@@ -423,6 +416,22 @@ function M.create(opts)
     c.text = spec.text or ''
     ui.hud[spec.key] = c
     ui.hudOrder[#ui.hudOrder + 1] = spec.key
+  end
+
+  -- ⑫ ★★ 待发球的两颗字母**建在这里（最后）**：真机上"后建的控件盖在上面"，
+  --     所以要让它们压在所有游戏元素之上 —— 用户报"预备球没有字母"，一半原因是层级建早了。
+  --     另一半是 ③ 那颗字太小：本体用**粗体**，我们设不了粗体 → 加白描边 + 放大一号替代。
+  if ui.letters ~= 0 then
+    for i = 1, 2 do
+      local c = build(hudPrefab, '待发球字母控件', i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = true
+      -- ★ 再用 SetAsLastSibling **强制置顶**（诊断行就是这么保证不被盖住的）。
+      --   官方接口在部分运行时没有 → pcall 包住，没有也不影响。
+      if c.SetAsLastSibling then pcall(function() c:SetAsLastSibling() end) end
+      ui.loadedLetter[i] = c
+    end
   end
 
   -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
@@ -783,7 +792,10 @@ function M.sync(ui, sc, st)
         local d2 = 2 * rr
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
         lc.text = tostring(base or '')
-        lc.fontSize = math.max(8, math.floor(rr * V.letterScale))
+        -- ★ 待发球字母：本体 `drawBead` 用的是**粗体**（`bold …px`），我们设不了粗体 ——
+        --   ③ 预备球半径只有 10.7，细字压在彩球上真机看着就是"没字母"。
+        --   替代方案：字号比链珠字母放大一号（1.15 → 1.35）+ 白描边（建的时候已开）。
+        lc.fontSize = math.max(11, math.floor(rr * 1.35))
         lc.fontColor = hexColor(CFG.BASE_INK[base] or C.letterOnLight)
         setVisible(ui, lc, true)
       end
