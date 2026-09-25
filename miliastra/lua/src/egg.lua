@@ -99,9 +99,20 @@ function M.rollDelta(st)
   return d
 end
 
--- 推进时间：报价刷新 / 计息 / 打工完成
+-- 推进时间：报价刷新 / 计息 / 打工完成 / 一局限时
 function M.tick(st, dt)
   local ev = {}
+  -- ★ 局时倒计时（10 分钟）。时间到 ⇒ 不能再交易（结算画面由界面负责）。
+  if not st.ended then
+    st.left = (st.left or M.SESSION_SEC) - dt
+    if st.left <= 0 then
+      st.left = 0
+      st.ended = true
+      note(st, '时间到，收盘')
+      ev[#ev + 1] = { type = 'close' }
+    end
+  end
+  if st.ended then return ev end      -- 收盘后不再刷新报价/计息/打工
   -- 打工
   if st.tWork > 0 then
     st.tWork = st.tWork - dt
@@ -202,7 +213,11 @@ end
 --   ⇒ 手上多一笔现金、同时欠 100g 黄金。金价跌了赚、涨了亏。
 --   ⚠ 一次一档价：同一档报价里借的，**必须等到下一次报价刷新**才能还金（见下）。
 M.SHORT_GOLD = 100
-M.HISTORY    = 48        -- 折线图保留多少个报价点（界面按这个数配控件）
+-- ★ 一局 10 分钟（原奇域的限时）。报价 3 秒一档 ⇒ 一局大约 **200 个价格点**。
+--   界面不画 200 段折线（控件不够，也不好看），而是**聚合成 40 根 K 线柱**（每根 5 档）：
+--   柱高 = 这 5 档里的最高/最低，色 = 收在开盘之上红、之下绿 —— 这才是"现实里的 K 线"观感。
+M.SESSION_SEC = 600      -- 一局多久（10 分钟）
+M.HISTORY    = 200       -- 保留多少个报价点（10 分钟 ÷ 3 秒 ≈ 200）
 function M.short(st)
   if not M.canBorrow(st) then return false, '欠款到顶，借不了金' end
   st.debtGold = st.debtGold + M.SHORT_GOLD

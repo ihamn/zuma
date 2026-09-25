@@ -695,39 +695,57 @@ local function syncEgg(ui, sc, st)
     c.fontSize = math.max(13, math.floor(19 * s))
     c.fontColor = hexColor(i == 1 and '#f0e6d2' or '#c8d4e6')
   end
-  -- ★ K 线式折线图：把最近的价格点连成线（涨=红、跌=绿 —— 中式习惯）
-  --   横轴：面板中部一条带；纵轴：按最近窗口的最低/最高价自适应缩放（留 8% 余量）
+  -- ★★ K 线柱（不画折线 ✗ —— 上一版用 placeSeg 画的折线在真机/出图上都没显示，
+  --   而且 200 个点需要 200 段控件（预算不够）。改用**每根柱一个控件、直接拉伸**：
+  --   一局 200 档 ⇒ 聚合成 **40 根柱，每根 5 档**；柱高 = 这 5 档的最高/最低，
+  --   色 = 收在开盘之上红、之下绿（中式习惯）。控件用现成的 49 段池，一根柱一个 ✓。
   local hist = st2.hist or {}
   local n = #hist
-  local cw, chh = 760 * s, 150 * s          -- 图区宽/高
-  local x0, y0 = W * 0.5 - cw * 0.5, H * 0.40
-  local lo, hi = 1e18, -1e18
+  local BARS = 40
+  local cw, chh = 900 * s, 210 * s              -- 图区宽/高
+  local x0, y0 = W * 0.5 - cw * 0.5, H * 0.38
+  local lo, hi = nil, nil
   for i = 1, n do
-    if hist[i] < lo then lo = hist[i] end
-    if hist[i] > hi then hi = hist[i] end
+    local v = hist[i]
+    if lo == nil or v < lo then lo = v end
+    if hi == nil or v > hi then hi = v end
   end
-  if hi - lo < 1 then hi = lo + 1 end
-  local pad = (hi - lo) * 0.08
+  if lo == nil then lo, hi = M.PRICE0 - 10, M.PRICE0 + 10 end
+  if hi - lo < 2 then hi = lo + 2 end
+  local pad = (hi - lo) * 0.10
   lo, hi = lo - pad, hi + pad
-  local function px(i)
-    if n <= 1 then return x0 end
-    return x0 + (i - 1) * cw / (n - 1)
-  end
-  local function py(v)
-    return y0 + chh - (v - lo) / (hi - lo) * chh
-  end
+  local function pyv(v) return y0 + chh - (v - lo) / (hi - lo) * chh end
+  local per = math.max(1, math.ceil(n / BARS))  -- 每根柱聚合几档
   local used = 0
-  for i = 1, n - 1 do
-    local seg = e.chart[i]
-    if seg then
-      used = i
-      local up = hist[i + 1] >= hist[i]
-      placeSeg(ui, seg, cx, cy, px(i), py(hist[i]), px(i + 1), py(hist[i + 1]),
-        3 * s, up and '#e8453c' or '#3fbf6f')
-      setVisible(ui, seg, true)
+  if n >= 2 then
+    local bwid = cw / BARS * 0.62
+    for b = 1, BARS do
+      local i0 = (b - 1) * per + 1
+      local i1 = math.min(n, i0 + per - 1)
+      if i0 >= n then break end
+      local bLo, bHi = hist[i0], hist[i0]
+      for i = i0, i1 do
+        if hist[i] < bLo then bLo = hist[i] end
+        if hist[i] > bHi then bHi = hist[i] end
+      end
+      local open, close = hist[i0], hist[i1]
+      local top, bot = pyv(bHi), pyv(bLo)
+      local hh = math.max(3 * s, bot - top)
+      local cxl = x0 + (b - 0.5) * cw / BARS
+      used = b
+      place(ui, e.chart[b], cx, cy, cxl, top + hh * 0.5, bwid, hh, 0)
+      setColor(ui, e.chart[b], (close >= open) and '#e8453c' or '#3fbf6f')
+      -- ⚠⚠ 图片控件**必须显式设素材**，不设就什么都不画（当初"轨道是一堆问号"就是这个坑 ✗）。
+      --    上一版我用 placeSeg 画的折线之所以不显示，九成也是这里漏了；现在直接补上。
+      setImage(ui, e.chart[b], ui.artBar or ui.artAny)
+      setVisible(ui, e.chart[b], true)
     end
   end
   for i = used + 1, #e.chart do setVisible(ui, e.chart[i], false) end
+  -- 收盘后盖一层提示（不再能交易）
+  if st2.ended then
+    e.lines[5].text = '★ 已收盘（10 分钟到）—— 点「返 回」结算'
+  end
 
   -- 六个按钮：两行三列
   local labels = { '买入 1g', '卖出 1g', '借 1 万', '借金套现 100g', '还金 100g', '打 工', '返 回' }
