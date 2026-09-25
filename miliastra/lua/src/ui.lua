@@ -297,7 +297,9 @@ function M.create(opts)
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
-  ui.trackSegments = opts.trackSegments or 64
+  -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
+  --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
+  ui.trackSegments = opts.trackSegments or 40
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
@@ -681,7 +683,10 @@ function M.sync(ui, sc, st)
   -- sc.beads.eliminate[i] = 副轨上的那一半；它的 .partner 指向主轨上被读出的球。
   local elim = sc.beads.eliminate
   local li = 0
-  local liveElim = {}
+  -- ★ 优化：这张表每帧都要用，**复用**而不是新建（真机 GC 压力）
+  local liveElim = ui._liveElim or {}
+  ui._liveElim = liveElim
+  for k in pairs(liveElim) do liveElim[k] = nil end
   for i = 1, #ui.elim do
     local e = elim[i]
     if e then

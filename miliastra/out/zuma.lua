@@ -2426,7 +2426,9 @@ function M.create(opts)
   ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
   ui.letters = (opts.letters == nil) and 1 or opts.letters
   ui.trackOn = (opts.track == nil) and 1 or opts.track
-  ui.trackSegments = opts.trackSegments or 64
+  -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
+  --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
+  ui.trackSegments = opts.trackSegments or 40
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
@@ -2810,7 +2812,10 @@ function M.sync(ui, sc, st)
   -- sc.beads.eliminate[i] = 副轨上的那一半；它的 .partner 指向主轨上被读出的球。
   local elim = sc.beads.eliminate
   local li = 0
-  local liveElim = {}
+  -- ★ 优化：这张表每帧都要用，**复用**而不是新建（真机 GC 压力）
+  local liveElim = ui._liveElim or {}
+  ui._liveElim = liveElim
+  for k in pairs(liveElim) do liveElim[k] = nil end
   for i = 1, #ui.elim do
     local e = elim[i]
     if e then
@@ -3384,7 +3389,7 @@ __M["game"] = function()
 --   shotCount    弹药池大小                                      [8]
 --   fancy        光晕 / 冷却环 / 动效（0 = 只留静态画面）          [1]
 --   track        轨道也由 Lua 画（0 = 用编辑器里摆的静态图）      [1]
---   trackSegments 每条轨画多少段（控件紧张时调小）                [64]
+--   trackSegments 每条轨画多少段（控件紧张时调小）                [40]
 --   letters      球面叠碱基字母（0 = 只靠图片素材）               [1]
 --   seed         随机种子                                        [12345]
 --   autoNext     过关后自动进下一关（0 = 不自动）                [1]
@@ -3913,7 +3918,7 @@ function G.boot()
     -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
     fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
     track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
-    trackSegments = param('trackSegments', 64),
+    trackSegments = param('trackSegments', 40),   -- ★ 优化：64→40（省 48 个控件，看不出差别）
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = G.prefabs.hud,
     hud = buildHudSpecs(w, h, G.teach),
@@ -4181,6 +4186,21 @@ function G.mateText()
   return '手里 ' .. tostring(b) .. ' → 打 ' .. table.concat(c, '/') .. ' 的球'
 end
 
+-- ★ 优化（2026-09-25）：菜单布局缓存。
+--   原来 syncState 每帧都调 MENU.layout（一次分配十几张表）—— 真机 Lua 的 GC 会因此抖动。
+--   布局只由这三样决定：画布宽高、scale、条目数。菜单是静止的，这三样不变就不必重算。
+--   而且只在**菜单态**才算（syncMenu 只在菜单态读它），游玩时一次都不算。
+function G.menuLayoutCached()
+  local v, items = G.view, G.menuItems or {}
+  local sc = (G.sc and G.sc.metrics and G.sc.metrics.scale) or 1
+  local c = G._menuLayout
+  if c and c.w == v.w and c.h == v.h and c.scale == sc and c.n == #items then return c end
+  local L = MENU.layout(v, (G.sc and G.sc.metrics) or CFG.metrics(sc), items)
+  L.w, L.h, L.scale, L.n = v.w, v.h, sc, #items
+  G._menuLayout = L
+  return L
+end
+
 function G.syncState(dt)
   local lines = {}
   if G.level and G.level.hint then
@@ -4223,7 +4243,11 @@ function G.syncState(dt)
     mate = G.mateText and G.mateText() or nil,
     -- ★ 菜单：UI 层要知道"现在是不是菜单态"，以及按钮画在哪（布局在 menu.lua 里算，进对拍）
     screen = G.screen,
-    menuLayout = MENU.layout(G.view, G.sc and G.sc.metrics or CFG.metrics(1), G.menuItems or {}),
+    -- ★ 优化（2026-09-25）：菜单布局**只在菜单态才算**，而且算一次就缓存 ——
+    --   原来每帧都调 MENU.layout（一次分配十几张表），真机 Lua 的 GC 会因此抖动；
+    --   而菜单是**静止**的（菜单态不推进盘面），画布/条目不变就没必要重算。
+    --   （syncMenu 只在菜单态用 st.menuLayout，所以游玩时不传也完全没问题）
+    menuLayout = (G.screen == 'menu') and G.menuLayoutCached() or nil,
   }
 end
 
