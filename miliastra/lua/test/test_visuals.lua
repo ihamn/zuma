@@ -263,6 +263,11 @@ do
   -- ★ z 序：字母必须**晚于**待发球创建（真机后建的盖在上面）
   H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[1].Id, '★ 字母建在球之后（z 序更靠上）')
   H.ok(GAME.ui.loadedLetter[2].Id > GAME.ui.loaded[2].Id, '★ 预备球字母也建在球之后')
+  -- ★★ 核糖体字母必须与"链珠字母"（真机上显示正常的那套）**机制完全一致**：
+  --    同样无描边、同样不调 SetAsLastSibling（移植侧小聪明，链珠字母从来没用过）。
+  H.eq(GAME.ui.loadedLetter[1].enableOutline, GAME.ui.letter[1].enableOutline,
+    '★ 核糖体字母与链珠字母的描边设置一致（都是 false）')
+  H.eq(GAME.ui.loadedLetter[1].siblingMoves or 0, 0, '★ 核糖体字母没有被 SetAsLastSibling 动过')
 
   -- ★ 大小球配比 = √2（DESIGN 的识别通道：出球道大球 / 三消道小球）
   local mt = GAME.sc.metrics

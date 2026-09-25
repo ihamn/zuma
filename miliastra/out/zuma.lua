@@ -2568,9 +2568,10 @@ function M.create(opts)
       --    结果 12~19px 这么小的字号下描边把笔画吃掉 → ④ 从"正常"变成"看不见"，
       --    ③ 更小更糊。字号放大就够，描边一律关（本体也没有描边，是纯粗体字）。
       c.enableOutline = false
-      -- 再用 SetAsLastSibling **强制置顶**（诊断行就是这么保证不被盖住的）。
-      -- 官方接口在部分运行时没有 → pcall 包住，没有也不影响。
-      if c.SetAsLastSibling then pcall(function() c:SetAsLastSibling() end) end
+      -- ★★ 也**不要**调 SetAsLastSibling：那是我为了让它们"置顶"加的移植侧小聪明，
+      --    而链珠字母（真机上**显示正常**的那套）从来没用过它 —— 两条路径唯一的多余差别就是它。
+      --    现在核糖体字母与链珠字母走**完全一样**的机制（同一个模板、同一个 place() 调用、
+      --    同样只靠"后建 = 在上"的层序），少一个变量就少一个出错的地方。
       ui.loadedLetter[i] = c
     end
   end
