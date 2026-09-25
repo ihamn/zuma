@@ -587,6 +587,15 @@ function G.boot()
       say('核糖体待发碱基：%s / %s', tostring(rb.loaded[1]), tostring(rb.loaded[2]))
     end
     say('本关允许的碱基：%s', table.concat(G.sc and G.sc.bases or {}, ' '))
+    -- ★ 待发球字母自检：真机上"看不到字母"时，这行能立刻分清是"没设"还是"被盖住/字号太小"
+    local ui = G.ui
+    if ui and ui.loadedLetter then
+      for k = 1, 2 do
+        local lc = ui.loadedLetter[k]
+        say('待发球字母 %s：文字=%s 可见=%s 字号=%s', tostring(k), tostring(lc and lc.text),
+          tostring(lc and lc.visible), tostring(lc and lc.fontSize))
+      end
+    end
   end
   return G
 end

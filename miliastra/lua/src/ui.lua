@@ -371,14 +371,20 @@ function M.create(opts)
     end
   end
 
-  -- ⑩ 瞄准线 -> 冷却环 -> 核糖体本体 -> 两颗待发球
+  -- ⑩ 瞄准线 -> 冷却环 -> 核糖体本体 -> 待发球描边 -> 两颗待发球 -> 字母
+  -- ★★ **建控件的顺序 = 图层顺序**（后建的盖在上面）。真机上"待发球看不到字母"就是
+  --    因为我把描边控件建在了字母**之后** → 描边压在字母上。正确顺序：环 → 球 → 字母。
   ui.aim = build(linkPrefab, '瞄准线控件', 1)
   ui.cd = build(ballPrefab, '冷却环控件', 1)
   ui.rb = build(ballPrefab, '核糖体控件', 1)
   softEdge(ui.rb, ui.fancy ~= 0, 45)
+  -- 本体给"炮口那颗"画了 glow（drawBead 第 9 个参数 true）→ 白色描边
+  ui.loadedHalo = { build(ballPrefab, '待发球描边控件', 1), build(ballPrefab, '待发球描边控件', 2) }
+  for i = 1, 2 do softEdge(ui.loadedHalo[i], true, 60) end
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
   -- ★ 待发球也要字母（本体 render.js：`drawBead(..., lb(1), ...)` 和 `lb(0)` —— **两颗都带字**）
+  --   放在最后建 → 一定盖在球和描边之上。
   if ui.letters ~= 0 then
     for i = 1, 2 do
       local c = build(hudPrefab, '待发球字母控件', i)
@@ -388,9 +394,6 @@ function M.create(opts)
       ui.loadedLetter[i] = c
     end
   end
-  -- 本体给"炮口那颗"画了 glow（drawBead 第 9 个参数 true）→ 白色描边
-  ui.loadedHalo = { build(ballPrefab, '待发球描边控件', 1), build(ballPrefab, '待发球描边控件', 2) }
-  for i = 1, 2 do softEdge(ui.loadedHalo[i], true, 60) end
 
   -- ⑪ HUD 文本（加半透明底板，免得字飘在背景上）
   ui.hudOrder = {}
@@ -574,7 +577,7 @@ function M.sync(ui, sc, st)
       if ui.halo[i] then
         if ui.fancy ~= 0 and b.pairGlow then
           -- ★ 用**空心圆**素材画成细环（实心圆画 2.1× 会像"球变大了" —— 用户一眼看出不对）
-          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r + V.haloPad, b.pairGlow .. 'cc', ui.artRing)
+          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r + V.haloPad, b.pairGlow .. 'e6', ui.artRing)
         else
           setVisible(ui, ui.halo[i], false)
         end
@@ -609,7 +612,7 @@ function M.sync(ui, sc, st)
       -- ★ 副轨绑定球的描边（本体：它的 glow=true 且 glowColor 为空 → 白色描边）
       local eh = ui.halo and ui.haloHalf and ui.halo[ui.haloHalf + i]
       if eh and ui.fancy ~= 0 then
-        placeBead(ui, eh, cx, cy, e.x, e.y, e.r + V.haloPad, '#ffffffcc', ui.artRing)
+        placeBead(ui, eh, cx, cy, e.x, e.y, e.r + V.haloPad, '#ffffff80', ui.artRing)  -- 本体是 rgba(255,255,255,0.5)
       elseif eh then
         setVisible(ui, eh, false)
       end
@@ -773,7 +776,7 @@ function M.sync(ui, sc, st)
     -- ★ 炮口那颗的白色描边（本体那次 drawBead 的 glow 参数是 true）
     local lh = ui.loadedHalo
     if lh and ui.fancy ~= 0 then
-      placeBead(ui, lh[1], cx, cy, lx1, ly1, bR + V.haloPad, '#ffffffcc', ui.artRing)
+      placeBead(ui, lh[1], cx, cy, lx1, ly1, bR + V.haloPad, '#ffffff80', ui.artRing)  -- 本体同样 50%
       setVisible(ui, lh[2], false)
     elseif lh then
       setVisible(ui, lh[1], false)
