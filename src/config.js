@@ -199,8 +199,10 @@ export function menuLayout(view, mt, items) {
 
 // 局内的「回菜单」按钮（左下角，和右下角的模式按钮对称）
 export function menuButtonRect(view, mt) {
-  const r = 22 * mt.scale;
-  const pad = 26 * mt.scale;
+  // ★ 2026-09-25：奇匠在真机上"找不到回菜单按钮"（原来 r=22/pad=26，贴着左下死角只有 44px）。
+  //   改大到 r=30、并把 pad 提到 44 ⇒ 离左右下各 74px，尺寸 60px。本体与移植必须同步改（对拍基准）。
+  const r = 30 * mt.scale;
+  const pad = 44 * mt.scale;
   return { x: r + pad, y: view.h - r - pad, r: r };
 }
 

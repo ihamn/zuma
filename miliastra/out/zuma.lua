@@ -4523,8 +4523,9 @@ end
 -- 局内左下角「回菜单」按钮（本体 config.js menuButtonRect）
 function M.playButtonRect(view, mt)
   local s = (mt and mt.scale) or 1
-  local r = 22 * s
-  local pad = 26 * s
+  -- ★ 与本体 config.js 的 menuButtonRect 同步（对拍基准）：r 22→30、pad 26→44
+  local r = 30 * s
+  local pad = 44 * s
   return { x = r + pad, y = view.h - r - pad, r = r }
 end
 
