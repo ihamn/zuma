@@ -2196,7 +2196,8 @@ local V = {
   caveR = 1.5,         -- drawCave：洞穴半径 = mt.R × 1.5
   linkFrom = 0.26,     -- drawPairLink：连线画在 26%~74% 之间
   linkTo = 0.74,
-  haloScale = 2.1,     -- 状态光晕直径 = 球径 × 2.1（本体是靠 glow 描边，我们用柔边圆近似）
+  haloScale = 1.16,     -- 状态光晕 = 球外**一圈细环**（本体 render.js 是 r+3 的描边：1.16×19≈22=r+3）
+                        -- ★ 原来是 2.1× 实心圆 → 看着像"球变大了"，用户一眼看出来不对
   letterScale = 1.15,  -- 球面字母字号 = 球半径 × 1.15
   trackWidthK = 2.3,   -- 轨道路面宽 = 轨半径 × 2.3（盖住珠子）
 }
@@ -2386,7 +2387,7 @@ function M.create(opts)
     canvas = canvas,
     parent = parent,
     last = {},
-    balls = {}, shots = {}, links = {}, elim = {}, merges = {}, halo = {}, letter = {}, track = {},
+    balls = {}, shots = {}, links = {}, elim = {}, merges = {}, halo = {}, letter = {}, elimLetter = {}, track = {},
     loaded = {}, hud = {},
     fx = {},                 -- 短命动效表
     elimOwner = {},          -- 球 id -> 正在显示它的绑定小球控件（用来播"被消掉"的动效）
@@ -2500,6 +2501,16 @@ function M.create(opts)
       c.verticalAlignment = Enum.TextVerticalAlignment.Middle
       c.enableOutline = false
       ui.letter[i] = c
+    end
+    -- ★ 绑定小球（三消道上那颗）**本体也带字母** —— 本体 render.js 用它自己那套
+    --   drawBead(..., b.label || b.base, ...) 画**所有**珠子，主轨副轨都画。
+    --   第一版只给主轨画了字母，用户报"用来匹配的小球没有字母"，就是这里漏的。
+    for i = 1, n do
+      local c = build(hudPrefab, '绑定球字母控件', i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      ui.elimLetter[i] = c
     end
   end
 
@@ -2689,10 +2700,11 @@ function M.sync(ui, sc, st)
       setColor(ui, c, hex)
       setImage(ui, c, artIdOf(ui, b.base))
 
-      -- 光晕：读出/配错才亮（本体 drawBead 的 glow / pairGlow）
+      -- 光晕：读出/配错才亮（本体 drawBead 的 glow：球外 r+3 处一圈**描边**，不是大圆盘）
       if ui.halo[i] then
         if ui.fancy ~= 0 and b.pairGlow then
-          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. '8c')
+          -- ★ 用**空心圆**素材画成细环（实心圆画 2.1× 会像"球变大了" —— 用户一眼看出不对）
+          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. 'cc', ui.artRing)
         else
           setVisible(ui, ui.halo[i], false)
         end
@@ -2724,6 +2736,17 @@ function M.sync(ui, sc, st)
     if e then
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), artIdOf(ui, e.base))
+      -- ★ 绑定小球上的字母（本体副轨那颗也画字母）
+      local lc = ui.elimLetter and ui.elimLetter[i]
+      if lc then
+        local d2 = 2 * e.r
+        place(ui, lc, cx, cy, e.x, e.y, d2, d2, 0)
+        lc.text = tostring(e.base or '')
+        lc.fontSize = math.max(8, math.floor(e.r * V.letterScale))
+        local ink = e.wrong and (CFG.WRONG_INK or C.letterOnLight) or (CFG.BASE_INK[e.base] or C.letterOnLight)
+        lc.fontColor = hexColor(ink)
+        setVisible(ui, lc, true)
+      end
       local pid = e.partner and e.partner.id
       if pid ~= nil then
         liveElim[pid] = true
@@ -2737,6 +2760,7 @@ function M.sync(ui, sc, st)
       end
     else
       setVisible(ui, ui.elim[i], false)
+      if ui.elimLetter and ui.elimLetter[i] then setVisible(ui, ui.elimLetter[i], false) end
     end
   end
   -- 读完的球（或整段被消掉）：让它的绑定小球"炸开淡出"再消失
@@ -3606,6 +3630,22 @@ function G.boot()
 
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
+
+  -- ★ 洞穴状态（回答"洞穴看不到"这类问题：是本体规则、还是位置/图层）
+  --   本体 render.js：`if (!(G.sc && G.sc.still)) drawCave(...)` —— **静止关本来就不画洞穴**。
+  do
+    local still = G.sc and G.sc.still
+    local e = (G.sc and G.sc.path) and G.sc.path:pointAt(G.sc.path.length) or nil
+    say('洞穴：静止关=%s 可见=%s 位置=%s,%s（静止关按本体规则不画）',
+      tostring(still), tostring(not still),
+      e and string.format('%.0f', e.x) or '?', e and string.format('%.0f', e.y) or '?')
+    if e then
+      say('  画布中心=%s,%s 洞穴离中心 %s,%s（画布 %sx%s）',
+        string.format('%.0f', w / 2), string.format('%.0f', h / 2),
+        string.format('%.0f', e.x - w / 2), string.format('%.0f', e.y - h / 2),
+        string.format('%.0f', w), string.format('%.0f', h))
+    end
+  end
 
   -- ★★ 碱基抽样（排"打中全变灰 / 球发白"这类问题用）：
   --   若这里打出 nil，说明真机上**碱基没生成出来** → 球会是白的、且每次命中都判"错配"。

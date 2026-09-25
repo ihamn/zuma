@@ -23,6 +23,23 @@ export const LIMITS = {
   },
   entityCustomVars: { value: 500, unit: '个', src: '《编辑项范围限制》' },
   structMembers: { value: 50, unit: '个', src: '《编辑项范围限制》' },
+  interfaceLayouts: {
+    value: 100, unit: '个', src: '《编辑项范围限制》',
+    note: '界面布局最大数量。'
+  },
+  customControlTemplates: {
+    value: 2000, unit: '个', src: '《编辑项范围限制》',
+    note: '自定义控件模板最大数量。'
+  },
+  controlsPerGroup: {
+    value: 1000, unit: '个', src: '《编辑项范围限制》',
+    note: '单个界面控件组内界面控件最大数量。★ 这是本项目**表现层的紧约束** —— ' +
+          '我们所有控件（球池/轨道/字母/HUD…）都挂在同一个画布容器下，算一组。'
+  },
+  controlsOnScreen: {
+    value: 10000, unit: '个', src: '《编辑项范围限制》',
+    note: '单次玩家屏幕内可显示的界面控件最大数量。'
+  },
   nodeGraphNodes: { value: 3000, unit: '个', src: '《编辑项范围限制》', note: '单张图' },
   allNodeGraphNodes: { value: 100000, unit: '个', src: '《编辑项范围限制》' },
   nodeGraphVars: { value: 100, unit: '个', src: '《编辑项范围限制》', note: '单张图' },
@@ -43,6 +60,14 @@ export const LIMITS = {
 export function checkWaypointFit(slotCount) {
   const max = LIMITS.pathWaypoints.value;
   return { ok: slotCount <= max, slotCount: slotCount, max: max, over: Math.max(0, slotCount - max) };
+}
+
+// ★ 表现层的控件预算：**全剧所有控件算一组**（都挂在同一个画布容器下），官方上限 1000。
+//   我们当前 ~837（球池 96 + 绑定球池 96 + 字母池 96 + 绑定球字母 96 + 轨道 128 + HUD/洞穴/核糖体…）。
+//   加了字母池之后离上限只剩 ~160 —— 以后再加池子前先跑这条。
+export function checkControlBudget(count) {
+  const max = LIMITS.controlsPerGroup.value;
+  return { ok: count <= max, count: count, max: max, over: Math.max(0, count - max) };
 }
 
 // 给 CLI 用的一行结论

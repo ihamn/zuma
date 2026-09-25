@@ -544,6 +544,22 @@ function G.boot()
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
 
+  -- ★ 洞穴状态（回答"洞穴看不到"这类问题：是本体规则、还是位置/图层）
+  --   本体 render.js：`if (!(G.sc && G.sc.still)) drawCave(...)` —— **静止关本来就不画洞穴**。
+  do
+    local still = G.sc and G.sc.still
+    local e = (G.sc and G.sc.path) and G.sc.path:pointAt(G.sc.path.length) or nil
+    say('洞穴：静止关=%s 可见=%s 位置=%s,%s（静止关按本体规则不画）',
+      tostring(still), tostring(not still),
+      e and string.format('%.0f', e.x) or '?', e and string.format('%.0f', e.y) or '?')
+    if e then
+      say('  画布中心=%s,%s 洞穴离中心 %s,%s（画布 %sx%s）',
+        string.format('%.0f', w / 2), string.format('%.0f', h / 2),
+        string.format('%.0f', e.x - w / 2), string.format('%.0f', e.y - h / 2),
+        string.format('%.0f', w), string.format('%.0f', h))
+    end
+  end
+
   -- ★★ 碱基抽样（排"打中全变灰 / 球发白"这类问题用）：
   --   若这里打出 nil，说明真机上**碱基没生成出来** → 球会是白的、且每次命中都判"错配"。
   --   若碱基正常而命中仍判错配，那就是"打中的是旁边那颗"（碰撞/瞄准）问题。

@@ -194,4 +194,35 @@ H.ok(#GAME.sc.beads.eliminate > 0, '第 2 关开局就有已读出的球：' .. 
 H.eq(GAME.ui.elim[1].visible, true, '★ 关卡自带的已读球也画出了绑定小球')
 H.eq(GAME.ui.links[1].visible, true, '★ 并且画出了连线')
 
+-- ⑫ ★ 绑定小球**也要有字母**（本体 render.js 用它自己那套 drawBead 画所有珠子，
+--    主轨副轨都带字母）。第一版只给主轨画了，用户报"用来匹配的小球没有字母"。
+-- ⑬ ★ 配对光晕是**球外一圈细环**，不是"大圆盘"：
+--    本体 glow 画在 r+3 处、线宽 max(1.5, r*0.18)；第一版我用 haloScale=2.1 实心圆，
+--    看着像"球变大了"（用户一眼看出来不对）。<br>
+--    ⚠ 上面 L172 那个 host 是 `letters=0` 的，所以这里自己起一个正常 host。
+do
+  newHost(2)                                   -- 第 2 关：开局自带已读出的球
+  UI.sync(GAME.ui, GAME.sc, GAME.syncState(DT))
+  local elim = GAME.sc.beads.eliminate
+  H.ok(#elim > 0, '第 2 关有已读出的球：' .. #elim .. ' 颗')
+
+  local lc = GAME.ui.elimLetter[1]
+  H.ok(lc ~= nil, '★ 有"绑定球字母"控件池')
+  H.eq(lc.visible, true, '★ 绑定小球的字母显示出来了')
+  H.eq(lc.text, tostring(elim[1].base), '★ 绑定球字母 = 它的碱基（' .. tostring(elim[1].base) .. '）')
+  H.ok(lc.fontSize and lc.fontSize >= 8, '字母有字号：' .. tostring(lc.fontSize))
+
+  local shown = nil
+  for i = 1, #GAME.ui.halo do
+    if GAME.ui.halo[i].visible then shown = GAME.ui.halo[i]; break end
+  end
+  H.ok(shown ~= nil, '★ 已读出的球带光晕（可见的光晕控件存在）')
+  local ball = GAME.ui.balls[1]
+  if shown and ball.sizeDeltaX and shown.sizeDeltaX then
+    local ratio = shown.sizeDeltaX / ball.sizeDeltaX
+    H.ok(ratio < 1.4, '★ 光晕直径 / 球直径 = ' .. string.format('%.2f', ratio)
+      .. '（必须 < 1.4；2.1 就是"球变大了"那个 bug）')
+  end
+end
+
 H.finish()

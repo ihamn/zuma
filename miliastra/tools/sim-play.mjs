@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ROOT } from './lib/lua-runner.mjs';
+import { checkControlBudget } from './lib/platform-limits.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, dflt) => {
@@ -230,6 +231,12 @@ const visibleImages = snap.filter((c) => c.kind === 'image' && c.visible && c.ac
 const texts = snap.filter((c) => c.kind === 'textbox' && c.text);
 console.log('\n--- 沙箱里的控件树 ---');
 console.log('  控件总数（含画布）：' + snap.length);
+// ★ 官方硬限制：单个界面控件组内界面控件最大 1000（我们全挂在同一个画布容器下 = 一组）
+{
+  const r = checkControlBudget(snap.length - 1);       // 减掉画布本身
+  console.log('  控件预算：' + r.count + ' / ' + r.max +
+    (r.ok ? ' ✓ 还剩 ' + (r.max - r.count) : ' ★★ 超了 ' + r.over + ' 个'));
+}
 console.log('  可见图片控件：' + visibleImages.length);
 const colors = {};
 for (const c of visibleImages) {
