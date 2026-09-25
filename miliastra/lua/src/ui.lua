@@ -681,11 +681,9 @@ function M.sync(ui, sc, st)
         ui.elimOwner[pid] = ui.elim[i]
         ui.elimSlot[pid] = i
         ui.elimHex[pid] = e.wrong and CFG.WRONG_COLOR or baseColor(e.base)
-        -- 刚被读出：绑定小球"弹"一下（本体 drawPairLink 的 pairGlow 质感）
-        if ui.fancy ~= 0 and ui.wasPaired[pid] == false then
-          setScaleRaw(ui.elim[i], 0.25)
-          ui.fx[#ui.fx + 1] = { c = ui.elim[i], kind = 'pop', t = 0, dur = 0.26 }
-        end
+        -- ★★ 2026-09-25 删掉"配对时弹一下"（原来会先把控件缩到 0.25 再弹回 1）。
+        --   用户原话："变大我看上去没有任何意义，删掉就好了"；而且**本体也没有这个效果**
+        --   （本体只有 pairGlow 的描边，不改尺寸）。现在绑定小球出现即 1:1 大小。
       end
     else
       setVisible(ui, ui.elim[i], false)
