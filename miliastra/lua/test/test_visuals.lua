@@ -284,6 +284,14 @@ do
       '★ ③ 预备球字母字号（下限 15，真机 scale=1 时从 12 抬到 15）= ' .. tostring(GAME.ui.loadedLetter[2].fontSize))
     H.ok(GAME.ui.loadedLetter[2].fontSize >= 15, '★ ③ 的字号不许低于 15（低于就真机看不见）')
   end
+  -- ★★ 真机教训（2026-09-25）：③ 用 2×球半径 = 21.5px 的框时"状态全对却不显示"；
+  --    放大后立刻显示。所以待发球字母的框**不许小于链珠字母的框**（2×mt.r = 26.9）。
+  -- 基准是**小球**的框（2×mt.r），不是大球的（大球是 2×mt.R = 38，别拿它比）
+  local smallBox = 2 * GAME.sc.metrics.r
+  H.ok(GAME.ui.loadedLetter[1].sizeDeltaX >= smallBox - 0.01,
+    '★ ④ 字母框 ≥ 小球框：' .. tostring(GAME.ui.loadedLetter[1].sizeDeltaX) .. ' vs ' .. tostring(smallBox))
+  H.ok(GAME.ui.loadedLetter[2].sizeDeltaX >= smallBox - 0.01,
+    '★ ③ 字母框 ≥ 小球框（真机上小于它就不显示）：' .. tostring(GAME.ui.loadedLetter[2].sizeDeltaX) .. ' vs ' .. tostring(smallBox))
   -- ★★ 建法回到"④ 正常"那一版：字母紧跟两颗待发球建（**在 HUD 之前**），
   --    靠"后建=在上"盖住球和描边即可 —— 不再挪到 M.create 末尾（那笔改动把 ④ 弄糊了）。
   H.ok(GAME.ui.loadedLetter[1].Id > GAME.ui.loaded[2].Id, '★ 字母建在两颗待发球之后（z 序在上）')

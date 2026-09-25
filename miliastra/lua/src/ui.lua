@@ -279,7 +279,7 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   ui.trackSegments = opts.trackSegments or 64
   ui.trackKey = nil
-  ui.letterProbe = (opts.letterProbe == nil) and 1 or opts.letterProbe
+  ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
   local ballPrefab = opts.ballPrefab or 1
   local hudPrefab = opts.hudPrefab or 2
@@ -803,7 +803,12 @@ function M.sync(ui, sc, st)
         local xx = (k == 1) and lx1 or lx2
         local yy = (k == 1) and ly1 or ly2
         local probe = (ui.letterProbe ~= 0) and (k == 2)
-        local d2 = probe and (rr * 5.6) or (2 * rr)
+        -- ★★ 框尺寸：**不小于链珠字母的框**（2×mt.r）。
+        --   真机事实（2026-09-25）：③ 原来用 2×rr = 21.5px 的框，状态全对（文字/可见/字号/位置
+        --   都对）却**不显示**；探针把框放大 + 换红底白字后立刻显示。而链珠字母的框是 26.9px，
+        --   一直显示正常 ⇒ 取 max(2×球半径, 2×链珠半径)，即"用已被证明能显示的尺寸"。
+        local box = math.max(2 * rr, 2 * mt.r)
+        local d2 = probe and (rr * 5.6) or box
         place(ui, lc, cx, cy, xx, yy, d2, d2, 0)
         if probe then
           lc.text = 'G'
