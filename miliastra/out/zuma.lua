@@ -2544,7 +2544,9 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
   --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
-  ui.trackSegments = opts.trackSegments or 64
+  -- ★ 长相优化（2026-09-25）：64 段在"绕好几圈的螺旋"上会露出折线棱角 ⇒ 提到 72 段换顺滑。
+  --   代价是 64 个控件，从球池腾（ballCount 96→80 省 80 个）⇒ 净 987/1000。
+  ui.trackSegments = opts.trackSegments or 72
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
@@ -4055,7 +4057,7 @@ function G.boot()
     cd = tonumber(tostring(param('cd', ''))) or 0,   -- 开火冷却环（本体没有 → 默认关）
     glow = tonumber(tostring(param('glow', ''))),    -- 球的描边/光晕总开关（默认开；0 = 全关）
     ballPrefab = G.prefabs.ball,
-    ballCount = param('ballCount', 96),
+    ballCount = param('ballCount', 80),   -- ★ 从球池腾控件给轨道段数（72 段轨道更顺滑）
     shotPrefab = G.prefabs.shot,
     shotCount = param('shotCount', 8),
     -- 连线 / 轨道 / 洞穴都用**球的模板**（拉长就是一根棒、放大就是一个洞）—— 编辑器里不用多建模板
@@ -4066,7 +4068,7 @@ function G.boot()
     -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
     fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
     track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
-    trackSegments = param('trackSegments', 64),   -- ⚠ 别为了省控件调小：真机轨道会出现接缝（出图看不出来，踩过）
+    trackSegments = param('trackSegments', 72),   -- ⚠ 别为了省控件调小：真机轨道会出现接缝（出图看不出来，踩过）
     letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = G.prefabs.hud,
     hud = buildHudSpecs(w, h, G.teach),

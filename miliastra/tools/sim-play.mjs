@@ -84,7 +84,7 @@ const mounted = rt.mountScript({
   control: root,
   params: {
     ballPrefab: 1, shotPrefab: 1, hudPrefab: 2, cursorPrefab: 3, playPrefab: 4,
-    levelIndex: level, diag: 1, autoNext: 0, ballCount: 96, shotCount: 8,
+    levelIndex: level, diag: 1, autoNext: 0, ballCount: 80, shotCount: 8,
     // 想试显示缩放（移植侧旋钮）就传 --zoom=1.42；不传 = 照本体
     ...(function () { const z = flag('zoom', ''); return z ? { zoom: Number(z) } : {}; })(),
     // --skipMenu=1：跳过开始菜单直接进关（出图/探针用；本体开局是在菜单里的）

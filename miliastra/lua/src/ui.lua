@@ -299,7 +299,9 @@ function M.create(opts)
   ui.trackOn = (opts.track == nil) and 1 or opts.track
   -- ★ 优化：轨道池 = 段数×2 个控件（占预算最多的一块）。64→40 省 48 个控件，
   --   段与段两端本来就互相叠着压住接缝，40 段在 1815×900 下肉眼看不出差别（已出图核对）。
-  ui.trackSegments = opts.trackSegments or 64
+  -- ★ 长相优化（2026-09-25）：64 段在"绕好几圈的螺旋"上会露出折线棱角 ⇒ 提到 72 段换顺滑。
+  --   代价是 64 个控件，从球池腾（ballCount 96→80 省 80 个）⇒ 净 987/1000。
+  ui.trackSegments = opts.trackSegments or 72
   ui.trackKey = nil
   ui.letterProbe = opts.letterProbe or 0     -- 临时探针，默认关（2026-09-25 用它定位过 ③ 不显示）
 
