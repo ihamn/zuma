@@ -59,7 +59,7 @@ https://cdn.jsdelivr.net/gh/ihamn/zuma@main/
 
 | 文件 | 字节数 | 属性里显示约 | sha256 |
 |---|---|---|---|
-| `zuma-pc.zip` | 69,376 | 67.8 KB | `2b7284f24aeda13157885fd7efecbbffd8ad761887be1472db16c4e02f4278a6` |
+| `zuma-pc.zip` | 69,376 | 67.8 KB | `00cb0fb424e36c7fa79c26df64e4803ba37c9e5ef87c278e06587fa3c0271d11` |
 | `dsh-session.zip` | 18,714,097 | 17.8 MB | `233ccbc40484ac58d891ed1798ef2a354c249fb7332e983eab3f9b850f1c51a8` |
 | `zuma.lua` | 156,608 | 152.9 KB | `b104a193f10c1c93ff17ed532d4fe6554f09df6b56025cfd9a77470b790d1d9a` |
 | `hello.lua` | 5,141 | 5.02 KB | `3d6f67feaf7298c94ac7511f82776bf94fbe81510ef9288f521c8010b32dc9e8` |
