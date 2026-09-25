@@ -99,6 +99,9 @@ function absPos(c) {
   return { x: canvasW / 2 + x, y: canvasH / 2 - y }
 }
 
+// 枚举字段在运行时里可能是 EnumItem（有 Name），也可能已经是字符串 —— 统一取名字
+const enumName = (v) => (v && typeof v === 'object' && v.Name != null ? String(v.Name) : (v == null ? null : String(v)))
+
 function snapshot() {
   const out = []
   walkControls(root, (c) => {
@@ -111,18 +114,33 @@ function snapshot() {
       visible: c.visible !== false,
       x: +p.x.toFixed(2),
       y: +p.y.toFixed(2),
-      w: +(c.sizeDeltaX || 0).toFixed(2),
-      h: +(c.sizeDeltaY || 0).toFixed(2),
+      // 缩放：动效靠它做"弹出/淡出"（sim-render 会乘进尺寸里）
+      scale: +(c.localScaleX ?? 1).toFixed(3),
+      w: +((c.sizeDeltaX || 0) * (c.localScaleX ?? 1)).toFixed(2),
+      h: +((c.sizeDeltaY || 0) * (c.localScaleY ?? 1)).toFixed(2),
       rot: +(c.localRotationZ || 0).toFixed(3),   // 瞄准线/连线靠它摆方向（sim-render 会画出来）
       pivot: +(c.pivotX ?? 0.5),                  // 旋转绕哪一点：0.5 = 绕中心
-      text: c.kind === 'textbox' ? (c.text || '') : undefined,
-      fontSize: c.kind === 'textbox' ? c.fontSize : undefined,
-      align: c.kind === 'textbox' ? String(c.horizontalAlignment) : undefined,
-      imageId: c.kind === 'image' ? c.imageId : undefined,
     }
     if (c.kind === 'image') {
       const [r, g, b, a] = unpackRgba(Number(c.imageColor) >>> 0)
       item.color = [r, g, b, a]
+      // 柔边（发光）：图片控件没有描边，靠它糊一圈
+      if (c.enableSoftEdge) item.soft = +(c.softEdgeWidthX ?? 0)
+      // 径向填充：冷却环用它画弧
+      const ft = enumName(c.fillType)
+      if (ft && ft !== 'Unused') {
+        item.fill = { type: ft, amount: +(c.fillAmount ?? 1), from: enumName(c.fillRadialType) }
+      }
+    } else if (c.kind === 'textbox') {
+      item.text = c.text || ''
+      item.fontSize = c.fontSize
+      item.align = enumName(c.horizontalAlignment)
+      item.valign = enumName(c.verticalAlignment)
+      const [fr, fg, fb, fa] = unpackRgba(Number(c.fontColor ?? 0xffffffff) >>> 0)
+      item.fontColor = [fr, fg, fb, fa]
+      const [br, bg, bb, ba] = unpackRgba(Number(c.bgColor ?? 0) >>> 0)
+      item.bgColor = [br, bg, bb, ba]
+      item.outline = c.enableOutline === true
     }
     out.push(item)
   })

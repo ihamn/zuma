@@ -165,10 +165,24 @@ http://10.176.136.109:8080/miliastra/out/zuma.lua &nbsp;（下载文件）</p>
   <tr><td><code>shotPrefab</code></td><td>弹药控件模板索引（不建就填① 的）</td><td>= ballPrefab</td></tr>
   <tr><td><code>ballCount</code></td><td>球池大小，先小一点好排错</td><td>96</td></tr>
   <tr><td><code>shotCount</code></td><td>弹药池大小</td><td>8</td></tr>
+  <tr><td><code>fancy</code></td><td>光晕 / 冷却环 / 动效。<b>哪样看着不对就先设 0</b>，只剩静态画面</td><td>1</td></tr>
+  <tr><td><code>track</code></td><td>轨道<b>由脚本自己画</b>（一段段拼出来）；设 0 就用你在编辑器里摆的轨道图</td><td>1</td></tr>
+  <tr><td><code>trackSegments</code></td><td>每条轨画多少段。<b>卡就调小</b>（32）</td><td>64</td></tr>
+  <tr><td><code>letters</code></td><td>球面上的碱基字母（A/U/G/C/T）由脚本叠文本框；素材图自带字母就设 0</td><td>1</td></tr>
   <tr><td><code>seed</code></td><td>随机种子，换个数就是另一局</td><td>12345</td></tr>
   <tr><td><code>autoNext</code></td><td>过关自动下一关，0 = 不自动</td><td>1</td></tr>
   <tr><td><code>diag</code></td><td><b>屏幕左下角那行诊断字，排错时别关</b>；正式发布再设 0</td><td>1</td></tr>
 </table>
+<div class="box">
+  <div class="big">控件数与素材：两张图就够</div>
+  <b>控件数</b>：脚本建多少控件 ≈ <b>7.7 × ballCount</b>（ballCount=96 时约 740 个；平台上限是<b>单控件组 1000</b>）。
+  感觉卡就把 <code>trackSegments</code> 调到 32，或者 <code>track=0</code> / <code>letters=0</code>。<br>
+  <b>素材</b>：模板① 那张图片最好是<b>纯白的圆</b>（不要带描边、不要带字母）——
+  脚本会给它<b>上色</b>，还会把它<b>拉长</b>当瞄准线 / 配对连线 / 轨道路面用。
+  圆球模板拉长后是"两端圆头的棒"，正合适。<br>
+  <b>轨道</b>：<code>track=1</code>（默认）时轨道由脚本画，编辑器里<b>不放轨道图也行</b>；
+  想要更好的美术效果就自己摆一张轨道图，然后把 <code>track</code> 设 0。
+</div>
 <div class="box">
   <div class="big">那行诊断字是干什么的</div>
   我在你手机上，<b>看不到你的屏幕</b>。左下角那行会显示

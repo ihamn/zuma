@@ -17,6 +17,10 @@
 --   playPrefab   玩区容器控件的模板索引（不填则跟球一样）        [= ballPrefab]
 --   ballCount    球池大小                                        [96]
 --   shotCount    弹药池大小                                      [8]
+--   fancy        光晕 / 冷却环 / 动效（0 = 只留静态画面）          [1]
+--   track        轨道也由 Lua 画（0 = 用编辑器里摆的静态图）      [1]
+--   trackSegments 每条轨画多少段（控件紧张时调小）                [64]
+--   letters      球面叠碱基字母（0 = 只靠图片素材）               [1]
 --   seed         随机种子                                        [12345]
 --   autoNext     过关后自动进下一关（0 = 不自动）                [1]
 --   diag         屏幕左下角显示诊断行（排错用，正式发布再关）    [1]
@@ -56,6 +60,7 @@ local function say(fmt, ...)
 end
 
 -- 玩区容器的尺寸 = 画布尺寸；它以画布中心为原点
+-- panel: 'solid'（默认，65% 底板）/ 'light'（40%，给大块文字）/ false（不画底板）
 local function buildHudSpecs(w, h)
   local pad = 16
   local halfW, halfH = w / 2, h / 2
@@ -64,8 +69,9 @@ local function buildHudSpecs(w, h)
     { key = 'lives', x = halfW - 120 - pad, y = halfH - 32 - pad, w = 240, h = 44, size = 30, align = 'right' },
     { key = 'runs', x = -halfW + 220 + pad, y = halfH - 84 - pad, w = 440, h = 40, size = 26, align = 'left' },
     { key = 'mode', x = -halfW + 120 + pad, y = -halfH + 32 + pad, w = 240, h = 44, size = 26, align = 'left' },
-    { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center' },
-    { key = 'result', x = 0, y = 0, w = math.min(w - 40, 640), h = 120, size = 40, align = 'center' },
+    { key = 'hint', x = 0, y = -halfH + 130, w = math.min(w - 40, 760), h = 130, size = 24, align = 'center', panel = 'light' },
+    -- 结果框在正中央：**平时没有文字**，所以不给底板（给了就是一块盖住核糖体的黑板）
+    { key = 'result', x = 0, y = 0, w = math.min(w - 40, 640), h = 120, size = 40, align = 'center', panel = false },
   }
 end
 
@@ -141,6 +147,7 @@ function G.boot()
     dc.horizontalAlignment = Enum.TextHorizontalAlignment.Left
     dc.verticalAlignment = Enum.TextVerticalAlignment.Middle
     if not G.diag then dc:SetVisible(false) end
+    dc.bgColor = Color.FromRGBA(8, 12, 18, 170)     -- 半透明底板，压着字也看得清
   end
 
   say('诊断框 = %s', tostring(G.diagControl))
@@ -168,11 +175,16 @@ function G.boot()
     ballCount = param('ballCount', 96),
     shotPrefab = param('shotPrefab', param('ballPrefab', 1)),
     shotCount = param('shotCount', 8),
-    -- 连线 / 洞穴都用**球的模板**（拉长就是一根棒、放大就是一个洞）—— 编辑器里不用多建模板
+    -- 连线 / 轨道 / 洞穴都用**球的模板**（拉长就是一根棒、放大就是一个洞）—— 编辑器里不用多建模板
     linkPrefab = param('linkPrefab', param('ballPrefab', 1)),
     linkCount = param('linkCount', param('ballCount', 96) * 2),
     cavePrefab = param('cavePrefab', param('ballPrefab', 1)),
     mergeCount = param('mergeCount', 8),
+    -- 三档"美化"开关（真机上哪条炸了就改脚本变量关掉，不用重新打包逻辑）
+    fancy = param('fancy', 1),               -- 光晕 / 冷却环 / 动效
+    track = param('track', 1),               -- 轨道也由 Lua 画（0 = 用编辑器摆的静态图）
+    trackSegments = param('trackSegments', 64),
+    letters = param('letters', 1),           -- 球面叠碱基字母（0 = 只靠图片素材）
     hudPrefab = param('hudPrefab', 2),
     hud = buildHudSpecs(w, h),
   })
@@ -185,6 +197,12 @@ function G.boot()
 
 
   say('控件池：球 %d / 弹药 %d', #G.ui.balls, #G.ui.shots)
+
+  -- ★ 诊断行要**画在所有东西上面**（排错的生命线，被压住就等于没有）：
+  --   必须在**所有控件都建完之后**再提到最上层 —— 早了会被后建的玩区/HUD 盖回去。
+  if G.diagControl and G.diagControl.SetAsLastSibling then
+    pcall(function() G.diagControl:SetAsLastSibling() end)
+  end
 
   G.startLevel(param('levelIndex', 1))
   say('关卡 %s 已装配', tostring(G.level and G.level.id or '?'))
@@ -269,7 +287,7 @@ function G.tick(dt)
       end
       return
     end
-    UI.sync(G.ui, G.sc, G.syncState())
+    UI.sync(G.ui, G.sc, G.syncState(dt))
     return
   end
 
@@ -296,7 +314,7 @@ function G.tick(dt)
   end
 
   BOARD.advanceScene(G.sc, dt)
-  UI.sync(G.ui, G.sc, G.syncState())
+  UI.sync(G.ui, G.sc, G.syncState(dt))
 
   if G.sc.won then
     G.screen = 'won'
@@ -308,7 +326,8 @@ function G.tick(dt)
 end
 
 -- 给 ui.sync 的那一小包"表现层才关心的东西"
-function G.syncState()
+-- dt：动效要按时间推进；events：board 攒的事件（清段/爆炸/命中），表现层拿去播一次性动效
+function G.syncState(dt)
   local lines = {}
   if G.level and G.level.hint then
     for i = 1, #G.level.hint do lines[#lines + 1] = G.level.hint[i] end
@@ -321,6 +340,8 @@ function G.syncState()
     lines = { '命数用尽  按 R 重来' }
   end
   return {
+    dt = dt,
+    events = G.sc and BOARD.drainEvents(G.sc) or nil,   -- ★ 只有一个消费者：这里取走，别处再取就没了
     mode = G.sc and G.sc.mode or 'match',
     hintLines = lines,
   }

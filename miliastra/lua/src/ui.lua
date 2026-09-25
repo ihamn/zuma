@@ -1,61 +1,107 @@
 -- ui.lua —— 表现层：board 的状态 -> 客户端控件。
 --
 -- ★★ 这里**不重新实现任何规则**：位置/颜色/显隐全部来自 sc（board.lua 算好的）。
---   ui 的职责只有三件：坐标换算、控件池复用、脏检查。
+--   ui 的职责只有四件：坐标换算、控件池复用、脏检查、**动效**。
 --
 -- 坐标：board 用的是"画布像素、原点左上、y 向下"；控件 anchoredPosition 在父级下
 --       是"相对父级中心、y 向上"。所以 y 要翻一次号：uiY = view.cy - y。
 --       父级 = 一块铺满画布、居中在画布中心的容器控件。
 --
--- ★★ 画什么、画多大，照着网页版 `src/render.js` 搬（百分比/半径/偏移都用它的原式）：
---     核糖体 + 两颗待发球 + 瞄准线   <-  drawRibosome
---     配对连线（正确 = 一根直棒；错配 = 折线"断掉的键"）<- drawPairLink / drawPairLinks
---     副轨上的绑定小球（读出的那一半）<- drawBeadLayer 的 beads.eliminate
---     并入过程里正在挤进去的球        <- drawMergeLayer
---     洞穴（降解口）                  <- drawCave
---   ★ 这是"表现层缺口"的修复：这一版之前，上面这些东西**一个都没画** ——
---     玩家看不到自己在哪开枪、往哪瞄，也看不出哪两颗配上了（只有颜色变化）。
+-- ★★ 画什么、画多大、什么颜色，全部照网页版 `src/render.js` 搬（百分比/半径/透明度用它的原式）：
+--     轨道（双轨路面）              <-  drawTrackLayer（本体用 canvas 描线；我们用一段段"棒"拼）
+--     洞穴（降解口）+ 红晕          <-  drawCave
+--     配对连线（正确=直棒 / 错配=折线"断掉的键"）<- drawPairLink / drawPairLinks
+--     绑定小球（副轨上读出的那一半）<-  drawBeadLayer 的 beads.eliminate
+--     球 + 状态光晕 + 碱基字母      <-  drawBead（label / ink / pairGlow）
+--     并入过程中的球                <-  drawMergeLayer
+--     核糖体 + 两颗待发球 + 瞄准线  <-  drawRibosome
+--     开火冷却环                    <-  本体没有（新增）：一眼看出能不能打
+--     HUD 文本 + 半透明底板         <-  drawRunBadges / drawStats
 --
--- ⚠ 画不出来的部分（原因写在代码里，不靠人记）：图片控件**只有填充色，没有描边/渐变**。
---     - 核糖体本体只画填充 #22303f（本体还有一圈蓝色描边）
---     - 洞穴画成"红圈 + 暗心"两个控件（本体是径向渐变 + 红描边）
---     - 瞄准线用不透明蓝 #4a6a90（本体是 rgba(150,200,255,0.30)，图片控件没有 alpha）
---     - 洞穴标签"降解洞穴"用**文本框**控件（本体是 canvas 文字）
---   这些都是"能看出是什么"的下限，真机上看着不对再调数值。
+-- ⚠ 近似之处（图片控件没有描边/渐变，只有填充色 + 柔边 + 径向填充）：
+--     - 核糖体：一个暗色圆 + 外圈柔边光晕（本体是填充 + 蓝描边）
+--     - 洞穴：中心暗圆 + 三层递减透明度的红晕（本体是径向渐变 + 红描边）
+--     - 轨道：一段段带柔边的"棒"（本体是描线；米字路口/自交处会略有接缝）
+--     - 球面字母用**文本框**叠在球上（本体是 canvas 文字）；副轨上的绑定小球没叠字母（省控件）
 --
 -- ★ 控件池的**创建顺序就是绘制顺序**（运行时：同级索引大的在上面，契约 §13）：
---   洞穴 -> 连线 -> 绑定小球 -> 球 -> 弹药 -> 并入球 -> 瞄准线 -> 核糖体 -> 待发球 -> HUD
+--   轨道 -> 洞穴 -> 连线 -> 光晕 -> 绑定小球 -> 球 -> 弹药 -> 并入球 -> 字母
+--   -> 瞄准线 -> 冷却环 -> 核糖体 -> 待发球 -> HUD
+--
+-- ★★ 动效为什么**不用 `game.Tween`** 而是自己算：我们的脏检查缓存按"上一次写进去的值"判断要不要再写，
+--   而 Tween 会绕过缓存直接改字段 —— 两条路同时改同一个字段就会互相打架（Tween 刚拉开，下一帧 sync 又写回去）。
+--   所以这里：**动画只碰 sync 不碰的字段**（`localScaleX/Y`、以及临时改的 `imageColor` 透明度），
+--   用一个短命的效果表 `ui.fx` 自己推进，结束时显式复位并把该控件的颜色缓存作废。
+--   （`game.Tween` 仍在假宿主/真机上可用，将来要做"编辑期摆好的动效"再用。）
 
 local CFG = require('config')
 
 local M = {}
 
-local Z = CFG.Z
+-- ==================== 视觉常量（照 src/render.js） ====================
 
--- '#rrggbb' -> Color(r,g,b,255)
+local V = {
+  aimLen = 110,        -- drawRibosome：瞄准线长 = R + 110 × scale
+  aimWidth = 1.4,      -- drawRibosome：线宽 = max(1, 1.4 × scale)
+  linkWidth = 3.4,     -- drawPairLink：连线宽 = max(3, 3.4 × scale)
+  linkAmp = 3.4,       -- drawPairLink：错配折线的横向幅度
+  caveR = 1.5,         -- drawCave：洞穴半径 = mt.R × 1.5
+  linkFrom = 0.26,     -- drawPairLink：连线画在 26%~74% 之间
+  linkTo = 0.74,
+  haloScale = 2.1,     -- 状态光晕直径 = 球径 × 2.1（本体是靠 glow 描边，我们用柔边圆近似）
+  letterScale = 1.15,  -- 球面字母字号 = 球半径 × 1.15
+  trackWidthK = 2.3,   -- 轨道路面宽 = 轨半径 × 2.3（盖住珠子）
+}
+
+-- 颜色：网页版用的是 rgba(...)，这里用 '#rrggbbaa'（官方 imageColor 是带 alpha 的 ColorValue）
+local C = {
+  aim = '#96c8ff4d',        -- rgba(150,200,255,0.30)
+  cd = '#96c8ff5c',         -- 冷却环
+  roadOuter = '#16202ea6',  -- 出球道路面（大球那条轨）
+  roadInner = '#1d2b3ca6',  -- 三消道路面（小球那条轨）
+  caveCore = '#0a060ad9',   -- 洞穴中心
+  -- 三层红晕（本体是径向渐变）：**要克制** —— 第一版给太大太红，整个洞口像块红布
+  caveGlow = { '#ff5a6e40', '#ff5a6e26', '#ff5a6e14' },
+  rbBody = '#22303f',
+  rbHalo = '#96c8ff2e',
+  panel = '#0a0e12a6',      -- HUD 底板（65%）
+  panelLight = '#0a0e1266', -- 提示语那种大块文字用更淡的底板（40%）
+  letterOnLight = '#101820',
+}
+
+-- '#rrggbb' / '#rrggbbaa' -> Color
 local function hexColor(s, fallback)
   if type(s) ~= 'string' or #s < 7 then return fallback or Color.FromRGBA(255, 255, 255, 255) end
   local r = tonumber(s:sub(2, 3), 16) or 255
   local g = tonumber(s:sub(4, 5), 16) or 255
   local b = tonumber(s:sub(6, 7), 16) or 255
-  return Color.FromRGBA(r, g, b, 255)
+  local a = (#s >= 9) and (tonumber(s:sub(8, 9), 16) or 255) or 255
+  return Color.FromRGBA(r, g, b, a)
 end
 M.hexColor = hexColor
+
+-- 取色的 rgb 分量（做"淡出"时要按同一底色改 alpha）
+local function rgbOf(hex)
+  return tonumber(hex:sub(2, 3), 16) or 255, tonumber(hex:sub(4, 5), 16) or 255, tonumber(hex:sub(6, 7), 16) or 255
+end
 
 -- ★★ 控件运行时 ID 的字段名：官方是 **`Id`（首字母大写）**。
 --    真机观察（客户端 Lua 运行时契约 §16）：「`Id`（客户端控件运行时ID，首字母大写）/ `prefabIndex`；
 --    旧 probe 中的 `control.id` / `prefabId` 是**旧版本接口，不作为兼容口径**」。
---    原来这里写的是小写 `c.id` —— 真机上恒为 nil，于是 `ui.last[nil]` 直接报
---    「table index is nil」，整局在第一帧就崩。本地假宿主提供的是小写 id，所以测试发现不了。
---    两个都认：真机走 Id，本地假宿主走 id。
+--    官方文档的字段表里写的是小写 `id` —— 以真机探针为准，两个都认。
 local function ctrlId(c)
   return c.Id or c.id
 end
 
-local function setField(ui, c, key, value)
+local function cacheOf(ui, c)
   local id = ctrlId(c)
   local cache = ui.last[id]
   if cache == nil then cache = {}; ui.last[id] = cache end
+  return cache
+end
+
+local function setField(ui, c, key, value)
+  local cache = cacheOf(ui, c)
   if cache[key] == value then return false end
   cache[key] = value
   c[key] = value
@@ -63,19 +109,21 @@ local function setField(ui, c, key, value)
 end
 
 local function setColor(ui, c, hex)
-  local id = ctrlId(c)
-  local cache = ui.last[id]
-  if cache == nil then cache = {}; ui.last[id] = cache end
+  local cache = cacheOf(ui, c)
   if cache.__color == hex then return false end
   cache.__color = hex
   c.imageColor = hexColor(hex)
   return true
 end
 
+-- 动效直接改过颜色之后，把缓存作废，下一帧才会把底色重新写回去
+local function invalidateColor(ui, c)
+  local cache = cacheOf(ui, c)
+  cache.__color = nil
+end
+
 local function setImage(ui, c, id)
-  local key = ctrlId(c)
-  local cache = ui.last[key]
-  if cache == nil then cache = {}; ui.last[key] = cache end
+  local cache = cacheOf(ui, c)
   if cache.__image == id then return false end
   cache.__image = id
   c:SetImage(Enum.ImageSource.StaticReference, id)
@@ -84,11 +132,8 @@ end
 
 -- ★★ 可见性：官方契约里 `visible` 是**只读**字段 —— 读得到，**写会报**
 --    「cannot set visible, no such field」。改可见性必须调方法 SetVisible()。
---    原来这里用 setField(..., 'visible', ...) 直接赋值，真机上一进 sync 就崩。
 local function setVisible(ui, c, v)
-  local id = ctrlId(c)
-  local cache = ui.last[id]
-  if cache == nil then cache = {}; ui.last[id] = cache end
+  local cache = cacheOf(ui, c)
   if cache.__visible == v then return false end
   cache.__visible = v
   c:SetVisible(v)
@@ -106,19 +151,18 @@ local function place(ui, c, cx, cy, x, y, w, h, rot)
 end
 
 -- ★ 旋转角：board 的 y 向下、控件空间的 y 向上，所以角度要翻号。
---   （两根连线/瞄准线都靠这个把"一根棒"摆到正确方向）
 local function rotDeg(dx, dy)
   return math.deg(math.atan(-dy, dx))
 end
 
 -- 把控件当"一根棒"用：从 (x1,y1) 拉到 (x2,y2)，粗细 w
-local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex)
+local function placeSeg(ui, c, cx, cy, x1, y1, x2, y2, w, hex, artId)
   local dx, dy = x2 - x1, y2 - y1
   local len = math.sqrt(dx * dx + dy * dy)
   if len < 1e-6 then setVisible(ui, c, false); return end
   place(ui, c, cx, cy, (x1 + x2) / 2, (y1 + y2) / 2, len, w, rotDeg(dx, dy))
   setColor(ui, c, hex)
-  setImage(ui, c, 1)
+  setImage(ui, c, artId or 1)
 end
 
 -- 把一个控件当"一颗球"用
@@ -129,22 +173,40 @@ local function placeBead(ui, c, cx, cy, x, y, r, hex, artId)
   setImage(ui, c, artId or 1)
 end
 
+-- 柔边（发光）：图片控件没有描边，靠 enableSoftEdge 做"糊一圈"的效果
+local function softEdge(c, on, width)
+  c.enableSoftEdge = on and true or false
+  if on then
+    c.softEdgeMode = Enum.ImageMaskSoftEdgeMode.Percentage
+    c.softEdgeWidthX = width or 60
+    c.softEdgeWidthY = width or 60
+  end
+end
+
+-- 动效：直接写 localScale（不进脏检查缓存 —— 这些字段 sync 不碰，不会打架）
+local function setScaleRaw(c, s)
+  c.localScaleX = s
+  c.localScaleY = s
+  c.localScaleZ = 1
+end
+
+-- 便宜的缓动（够用即可；要 30 种缓动可以换 game.Tween，见文件头说明）
+local function easeOut(u) return 1 - (1 - u) * (1 - u) end
+local function easeBack(u)
+  local s = 1.9
+  local v = u - 1
+  return 1 + (s + 1) * v * v * v + s * v * v
+end
+
 -- ==================== 建池 ====================
 
 -- opts:
---   parent        挂到哪个控件下（一般是铺满画布的容器）
---   canvas        { w, h }
---   ballPrefab    球控件的控件模板索引
---   ballCount     球池大小（同时也是绑定小球池的大小）
---   shotPrefab    弹药控件模板索引
---   shotCount     弹药池大小
---   linkPrefab    连线的模板索引（默认与球同一个模板：拉长就是一根棒）
---   linkCount     连线池大小（默认 ballCount × 2 —— 错配的折线要占两段）
---   mergeCount    并入球池大小（默认 8）
---   cavePrefab    洞穴的模板索引（默认与球同一个模板）
---   art           { [base] = 图片id }；缺省用 1..5
---   hudPrefab     文本框控件模板索引
---   hud           { { key=, text=, x=, y=, size=, align= }, ... }  x/y 是**控件坐标**（相对中心，y 向上）
+--   parent / canvas / ballPrefab / ballCount / shotPrefab / shotCount / art / hudPrefab / hud   —— 同以前
+--   linkPrefab / linkCount / cavePrefab / mergeCount                                            —— 同以前
+--   track          1 = 轨道也由 Lua 画（0 = 用编辑器里摆的静态图）
+--   trackSegments  每条轨画多少段（默认 64；控件预算紧张时调小）
+--   letters        1 = 球面上叠碱基字母文本框（0 = 只靠图片素材）
+--   fancy          1 = 光晕 / 冷却环 / 动效（0 = 只留静态画面）
 function M.create(opts)
   opts = opts or {}
   local parent = opts.parent
@@ -155,13 +217,13 @@ function M.create(opts)
     canvas = canvas,
     parent = parent,
     last = {},
-    balls = {},
-    shots = {},
-    links = {},
-    elim = {},
-    merges = {},
-    loaded = {},
-    hud = {},
+    balls = {}, shots = {}, links = {}, elim = {}, merges = {}, halo = {}, letter = {}, track = {},
+    loaded = {}, hud = {},
+    fx = {},                 -- 短命动效表
+    elimOwner = {},          -- 球 id -> 正在显示它的绑定小球控件（用来播"被消掉"的动效）
+    elimHex = {},            -- 球 id -> 绑定小球的颜色（淡出时要用同一个底色改 alpha）
+    wasPaired = {},          -- 球 id -> 上一帧是否已读出
+    t = 0,
     stats = { writes = 0, ballWrites = 0, hudWrites = 0 },
   }
 
@@ -170,6 +232,11 @@ function M.create(opts)
     for i = 1, #CFG.BASES do art[CFG.BASES[i]] = i end
   end
   ui.art = art
+  ui.fancy = (opts.fancy == nil) and 1 or opts.fancy
+  ui.letters = (opts.letters == nil) and 1 or opts.letters
+  ui.trackOn = (opts.track == nil) and 1 or opts.track
+  ui.trackSegments = opts.trackSegments or 64
+  ui.trackKey = nil
 
   local ballPrefab = opts.ballPrefab or 1
   local hudPrefab = opts.hudPrefab or 2
@@ -192,8 +259,14 @@ function M.create(opts)
   local n = opts.ballCount or 96
   local sn = opts.shotCount or 8
 
-  -- ① 洞穴（最底下：球要能从它前面滚进去）
-  ui.caveRing = build(cavePrefab, '洞穴外圈控件', 1)
+  -- ① 轨道（最底下）：一段段"棒"拼成两条轨路面
+  if ui.trackOn ~= 0 then
+    for i = 1, ui.trackSegments * 2 do ui.track[i] = build(linkPrefab, '轨道控件', i) end
+  end
+
+  -- ② 洞穴：三层红晕 + 暗心 + 文字
+  ui.caveGlow = { build(cavePrefab, '洞穴光晕控件', 1), build(cavePrefab, '洞穴光晕控件', 2),
+                  build(cavePrefab, '洞穴光晕控件', 3) }
   ui.cave = build(cavePrefab, '洞穴控件', 1)
   ui.caveLabel = build(hudPrefab, '洞穴文字控件', 1)
   ui.caveLabel.fontSize = 18
@@ -202,31 +275,50 @@ function M.create(opts)
   ui.caveLabel.enableOutline = true
   ui.caveLabel.text = '降解洞穴'
   ui.caveLabel:SetSizeDelta(160, 28)
+  for i = 1, #ui.caveGlow do softEdge(ui.caveGlow[i], ui.fancy ~= 0, 70) end
+  softEdge(ui.cave, ui.fancy ~= 0, 35)
 
-  -- ② 配对连线（在球下面：连线不该盖住球面）
+  -- ③ 连线
   local ln = opts.linkCount or (n * 2)
   for i = 1, ln do ui.links[i] = build(linkPrefab, '连线控件', i) end
 
-  -- ③ 绑定小球（副轨上"读出的那一半"）
+  -- ④ 状态光晕（在球下面）
+  if ui.fancy ~= 0 then
+    for i = 1, n do
+      ui.halo[i] = build(ballPrefab, '光晕控件', i)
+      softEdge(ui.halo[i], true, 80)
+    end
+  end
+
+  -- ⑤ 绑定小球（副轨上"读出的那一半"）
   for i = 1, n do ui.elim[i] = build(ballPrefab, '绑定小球控件', i) end
 
-  -- ④ 球池
+  -- ⑥ 球池 / ⑦ 弹药池 / ⑧ 并入球
   for i = 1, n do ui.balls[i] = build(ballPrefab, '球控件', i) end
-
-  -- ⑤ 弹药池
   for i = 1, sn do ui.shots[i] = build(opts.shotPrefab or ballPrefab, '弹药控件', i) end
-
-  -- ⑥ 并入球（加球模式里正在挤进去的那颗）
   local mn = opts.mergeCount or 8
   for i = 1, mn do ui.merges[i] = build(ballPrefab, '并入球控件', i) end
 
-  -- ⑦ 瞄准线 -> 核糖体本体 -> 两颗待发球（本体在最上，压住瞄准线的起点）
+  -- ⑨ 球面字母（盖在球上面）
+  if ui.letters ~= 0 then
+    for i = 1, n do
+      local c = build(hudPrefab, '字母控件', i)
+      c.horizontalAlignment = Enum.TextHorizontalAlignment.Middle
+      c.verticalAlignment = Enum.TextVerticalAlignment.Middle
+      c.enableOutline = false
+      ui.letter[i] = c
+    end
+  end
+
+  -- ⑩ 瞄准线 -> 冷却环 -> 核糖体本体 -> 两颗待发球
   ui.aim = build(linkPrefab, '瞄准线控件', 1)
+  ui.cd = build(ballPrefab, '冷却环控件', 1)
   ui.rb = build(ballPrefab, '核糖体控件', 1)
+  softEdge(ui.rb, ui.fancy ~= 0, 45)
   ui.loaded[1] = build(ballPrefab, '待发球控件', 1)
   ui.loaded[2] = build(ballPrefab, '待发球控件', 2)
 
-  -- ⑧ HUD 文本
+  -- ⑪ HUD 文本（加半透明底板，免得字飘在背景上）
   ui.hudOrder = {}
   for i = 1, #(opts.hud or {}) do
     local spec = opts.hud[i]
@@ -239,29 +331,138 @@ function M.create(opts)
       or (spec.align == 'center' and Enum.TextHorizontalAlignment.Middle or Enum.TextHorizontalAlignment.Left)
     c.verticalAlignment = Enum.TextVerticalAlignment.Middle
     c.enableOutline = true
+    -- 底板：默认 65% 半透明；spec.panel == 'light' 更淡一点（提示文字块很大，别做成黑板）
+    local panelHex = '#00000000'
+    if spec.panel == 'light' then panelHex = C.panelLight
+    elseif spec.panel ~= false then panelHex = C.panel end
+    c.bgColor = hexColor(panelHex)
     c.text = spec.text or ''
     ui.hud[spec.key] = c
     ui.hudOrder[#ui.hudOrder + 1] = spec.key
   end
 
+  -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）
+  local total = M.count(ui)
+  if total > 900 then
+    if print then
+      pcall(print, string.format('[zuma] ⚠ 控件数 %d 接近上限 1000：把 ballCount / trackSegments 调小，或把 track / letters 关掉', total))
+    end
+  end
+
   return ui
+end
+
+-- ==================== 轨道 ====================
+
+-- 轨道用"一段段棒"拼：本体 drawTrackLayer 是 canvas 描线，图片控件只能这样近似。
+-- 只在换关时写一次（静态），每帧不碰 —— 所以哪怕 128 个控件也不吃帧预算。
+local function placeTrack(ui, sc)
+  if ui.trackOn == 0 or #ui.track == 0 then return end
+  local cx, cy = sc.view.cx, sc.view.cy
+  local mt = sc.metrics
+  local key = tostring(sc.level and sc.level.id) .. '#' .. tostring(math.floor(sc.path.length)) ..
+    '#' .. tostring(sc.rails and sc.rails.spawn and sc.rails.spawn.offset or 0)
+  if ui.trackKey == key then return end
+  ui.trackKey = key
+
+  local N = ui.trackSegments
+  local seg = 0
+  local function drawRail(poly, radius, hex)
+    local m = #poly
+    if m < 2 then return end
+    local w = V.trackWidthK * radius
+    for k = 0, N - 1 do
+      local i0 = 1 + math.floor(k * (m - 1) / N)
+      local i1 = 1 + math.floor((k + 1) * (m - 1) / N)
+      if i1 > i0 then
+        seg = seg + 1
+        local a, b = poly[i0], poly[i1]
+        placeSeg(ui, ui.track[seg], cx, cy, a.x, a.y, b.x, b.y, w, hex)
+        softEdge(ui.track[seg], ui.fancy ~= 0, 50)
+      end
+    end
+  end
+
+  if sc.railPolys then
+    drawRail(sc.railPolys.spawn, (sc.rails.spawn and sc.rails.spawn.radius) or mt.R, C.roadOuter)
+    drawRail(sc.railPolys.eliminate, (sc.rails.eliminate and sc.rails.eliminate.radius) or mt.r, C.roadInner)
+  end
+  for i = seg + 1, #ui.track do setVisible(ui, ui.track[i], false) end
 end
 
 -- ==================== 每帧同步 ====================
 
--- st（可选）: { aim = 弧度, hintLines = {..}, badge = '…', mode = 'match'|'insert' }
+-- st（可选）: { dt, events, hintLines = {..}, mode = 'match'|'insert' }
 function M.sync(ui, sc, st)
   st = st or {}
   local view = sc.view
   local mt = sc.metrics
   local cx, cy = view.cx, view.cy
+  local dt = st.dt or 0
+  ui.t = ui.t + dt
   ui.stats.writes = 0
 
   local function baseColor(b)
     return CFG.BASE_COLOR[b] or '#ffffff'
   end
 
-  -- ---- 球 ----
+  -- ---- 动效推进（先推进，再让本帧的静态同步覆盖"非动画字段"）----
+  for i = #ui.fx, 1, -1 do
+    local fx = ui.fx[i]
+    fx.t = fx.t + dt
+    local u = fx.dur > 0 and math.min(1, fx.t / fx.dur) or 1
+    local c = fx.c
+    if fx.kind == 'pop' then
+      setScaleRaw(c, 0.25 + (1 - 0.25) * easeBack(u))
+    elseif fx.kind == 'fire' then
+      local k = (u < 0.4) and (u / 0.4) or (1 - (u - 0.4) / 0.6)
+      setScaleRaw(c, 1 + 0.18 * k)
+    elseif fx.kind == 'gone' then
+      setScaleRaw(c, 1 + 0.9 * easeOut(u))
+      local r, g, b = rgbOf(fx.hex)
+      c.imageColor = Color.FromRGBA(r, g, b, math.floor(255 * (1 - u) + 0.5))
+    end
+    if u >= 1 then
+      if fx.kind == 'gone' then
+        setVisible(ui, c, false)
+      else
+        setScaleRaw(c, 1)
+      end
+      if fx.hex then invalidateColor(ui, c) end
+      table.remove(ui.fx, i)
+    end
+  end
+
+  -- ---- 轨道（换关才写）----
+  placeTrack(ui, sc)
+
+  -- ---- 洞穴（静止练习关没有轨道，也就没有洞穴）----
+  if ui.cave then
+    if sc.still or not sc.path then
+      setVisible(ui, ui.cave, false)
+      setVisible(ui, ui.caveLabel, false)
+      for i = 1, #ui.caveGlow do setVisible(ui, ui.caveGlow[i], false) end
+    else
+      local e = sc.path:pointAt(sc.path.length)
+      local R = mt.R * V.caveR
+      -- 三层红晕（本体是径向渐变）+ 暗心；fancy 关了就只有暗心
+      if ui.fancy ~= 0 then
+        for i = 1, #ui.caveGlow do
+          local k = 1 + 0.16 * i          -- 1.16 / 1.32 / 1.48：贴着本体那一圈，不要铺开一大片
+          local glow = ui.caveGlow[i]
+          placeBead(ui, glow, cx, cy, e.x, e.y, R * k, C.caveGlow[i] or C.caveGlow[1], 1)
+          -- 呼吸：慢慢放大缩小，让"洞口"看着是活的
+          setScaleRaw(glow, 1 + 0.05 * math.sin((ui.t + i * 0.35) * 2.4))
+        end
+      else
+        for i = 1, #ui.caveGlow do setVisible(ui, ui.caveGlow[i], false) end
+      end
+      placeBead(ui, ui.cave, cx, cy, e.x, e.y, R, C.caveCore, 1)
+      place(ui, ui.caveLabel, cx, cy, e.x, e.y + R + 14 * (mt.scale or 1), 160, 28, 0)
+    end
+  end
+
+  -- ---- 球（+ 状态光晕 + 碱基字母）----
   local beads = sc.beads.spawn
   local pool = ui.balls
   for i = 1, #pool do
@@ -278,26 +479,78 @@ function M.sync(ui, sc, st)
       local hex = b.wrongMark and CFG.WRONG_COLOR or baseColor(b.base)
       setColor(ui, c, hex)
       setImage(ui, c, ui.art[b.base] or 1)
+
+      -- 光晕：读出/配错才亮（本体 drawBead 的 glow / pairGlow）
+      if ui.halo[i] then
+        if ui.fancy ~= 0 and b.pairGlow then
+          placeBead(ui, ui.halo[i], cx, cy, b.x, b.y, b.r * V.haloScale, b.pairGlow .. '8c', 1)
+        else
+          setVisible(ui, ui.halo[i], false)
+        end
+      end
+
+      -- 字母：本体把 label 画在球面上
+      if ui.letter[i] then
+        local lc = ui.letter[i]
+        local ink = b.wrongMark and (CFG.WRONG_INK or C.letterOnLight) or (CFG.BASE_INK[b.base] or C.letterOnLight)
+        place(ui, lc, cx, cy, b.x, b.y, d, d, 0)
+        lc.text = tostring(b.label or b.base or '')
+        lc.fontSize = math.max(8, math.floor(b.r * V.letterScale))
+        lc.fontColor = hexColor(ink)
+      end
     else
       setVisible(ui, c, false)
+      if ui.halo[i] then setVisible(ui, ui.halo[i], false) end
+      if ui.letter[i] then setVisible(ui, ui.letter[i], false) end
     end
   end
 
   -- ---- 绑定小球 + 配对连线（"读出"这件事的可视化）----
   -- sc.beads.eliminate[i] = 副轨上的那一半；它的 .partner 指向主轨上被读出的球。
-  -- 连线画在两者之间（本体 drawPairLink：26%~74% 一段；错配画成折线 = "断掉的键"）。
   local elim = sc.beads.eliminate
   local li = 0
+  local liveElim = {}
   for i = 1, #ui.elim do
     local e = elim[i]
     if e then
       placeBead(ui, ui.elim[i], cx, cy, e.x, e.y, e.r,
         e.wrong and CFG.WRONG_COLOR or baseColor(e.base), ui.art[e.base] or 1)
+      local pid = e.partner and e.partner.id
+      if pid ~= nil then
+        liveElim[pid] = true
+        ui.elimOwner[pid] = ui.elim[i]
+        ui.elimHex[pid] = e.wrong and CFG.WRONG_COLOR or baseColor(e.base)
+        -- 刚被读出：绑定小球"弹"一下（本体 drawPairLink 的 pairGlow 质感）
+        if ui.fancy ~= 0 and ui.wasPaired[pid] == false then
+          setScaleRaw(ui.elim[i], 0.25)
+          ui.fx[#ui.fx + 1] = { c = ui.elim[i], kind = 'pop', t = 0, dur = 0.26 }
+        end
+      end
     else
       setVisible(ui, ui.elim[i], false)
     end
   end
-  local barW = math.max(2, 3.4 * (mt.scale or 1))
+  -- 读完的球（或整段被消掉）：让它的绑定小球"炸开淡出"再消失
+  if ui.fancy ~= 0 then
+    for pid, c in pairs(ui.elimOwner) do
+      if not liveElim[pid] then
+        local wasLive = false
+        for i = 1, #elim do
+          local e = elim[i]
+          if e and e.partner and e.partner.id == pid then wasLive = true; break end
+        end
+        if not wasLive and ui.wasPaired[pid] == true then
+          ui.fx[#ui.fx + 1] = { c = c, kind = 'gone', t = 0, dur = 0.22,
+                                hex = ui.elimHex[pid] or '#ffffff' }
+          invalidateColor(ui, c)
+        end
+        ui.elimOwner[pid] = nil
+        ui.elimHex[pid] = nil
+        ui.wasPaired[pid] = nil
+      end
+    end
+  end
+  local barW = math.max(2, V.linkWidth * (mt.scale or 1))
   for i = 1, #elim do
     local e = elim[i]
     local p = e.partner
@@ -309,27 +562,33 @@ function M.sync(ui, sc, st)
         if e.wrong then
           -- 错配：折线（DESIGN §32：主题上就是"氢键接不上"）。两段 = 两个控件。
           local px, py = -dy / len, dx / len
-          local amp = math.max(2.5, 3.4 * (mt.scale or 1))
+          local amp = math.max(2.5, V.linkAmp * (mt.scale or 1))
           if li + 2 <= #ui.links then
             li = li + 1
             placeSeg(ui, ui.links[li], cx, cy,
-              e.x + dx * 0.26, e.y + dy * 0.26,
+              e.x + dx * V.linkFrom, e.y + dy * V.linkFrom,
               e.x + dx * 0.42 + px * amp, e.y + dy * 0.42 + py * amp, barW, hex)
             li = li + 1
             placeSeg(ui, ui.links[li], cx, cy,
               e.x + dx * 0.58 - px * amp, e.y + dy * 0.58 - py * amp,
-              e.x + dx * 0.74, e.y + dy * 0.74, barW, hex)
+              e.x + dx * V.linkTo, e.y + dy * V.linkTo, barW, hex)
           end
         elseif li + 1 <= #ui.links then
           li = li + 1
           placeSeg(ui, ui.links[li], cx, cy,
-            e.x + dx * 0.26, e.y + dy * 0.26,
-            e.x + dx * 0.74, e.y + dy * 0.74, barW, hex)
+            e.x + dx * V.linkFrom, e.y + dy * V.linkFrom,
+            e.x + dx * V.linkTo, e.y + dy * V.linkTo, barW, hex)
         end
       end
     end
   end
   for i = li + 1, #ui.links do setVisible(ui, ui.links[i], false) end
+
+  -- ---- 状态记忆（给下一帧判断"刚读出/刚消失"）----
+  for i = 1, #beads do
+    local b = beads[i]
+    if b.id ~= nil then ui.wasPaired[b.id] = b.paired and true or false end
+  end
 
   -- ---- 弹药 ----
   local shots = sc.projectiles
@@ -354,17 +613,28 @@ function M.sync(ui, sc, st)
     end
   end
 
-  -- ---- 核糖体（发射口）+ 两颗待发球 + 瞄准线 ----
+  -- ---- 核糖体（发射口）+ 两颗待发球 + 瞄准线 + 冷却环 ----
   local rb = sc.rb
   if rb then
     local R = rb.r
     local ax, ay = math.cos(rb.aim), math.sin(rb.aim)
-    -- 瞄准线：从炮口沿 aim 方向，长度 R + 110×scale（本体 drawRibosome 原式）
+    -- 瞄准线：从炮口沿 aim 方向，长度 R + 110×scale（本体 drawRibosome 原式），30% 透明
     placeSeg(ui, ui.aim, cx, cy, rb.x, rb.y,
-      rb.x + ax * (R + 110 * (mt.scale or 1)), rb.y + ay * (R + 110 * (mt.scale or 1)),
-      math.max(1, 1.4 * (mt.scale or 1)), '#4a6a90')
-    -- 本体
-    placeBead(ui, ui.rb, cx, cy, rb.x, rb.y, R, '#22303f', 1)
+      rb.x + ax * (R + V.aimLen * (mt.scale or 1)), rb.y + ay * (R + V.aimLen * (mt.scale or 1)),
+      math.max(1, V.aimWidth * (mt.scale or 1)), C.aim)
+    -- 核糖体本体
+    placeBead(ui, ui.rb, cx, cy, rb.x, rb.y, R, C.rbBody, 1)
+    -- 开火冷却环：径向填充，满了就该能打了（本体没有这个，是我们加的"信息量美化"）
+    if ui.cd then
+      if ui.fancy ~= 0 and rb.cooldown and rb.cooldown > 0.001 then
+        local total = (CFG.DESIGN and CFG.DESIGN.fireCooldown) or 0.16
+        local p = 1 - math.min(1, rb.cooldown / total)
+        placeBead(ui, ui.cd, cx, cy, rb.x, rb.y, R * 1.45, C.cd, 1)
+        ui.cd:SetFillRadial360(Enum.ImageFillRadialType.Top, p)
+      else
+        setVisible(ui, ui.cd, false)
+      end
+    end
     -- 两颗待发球：炮口那颗在前（+0.8R，半径 ×1.0）、待命那颗在后（−0.7R，半径 ×0.8）
     local bR = (sc.mode == 'insert') and mt.R or mt.r
     local b1, b2 = rb.loaded and rb.loaded[1], rb.loaded and rb.loaded[2]
@@ -374,26 +644,28 @@ function M.sync(ui, sc, st)
       rb.x - ax * R * 0.7, rb.y - ay * R * 0.7, bR * 0.8, baseColor(b2), ui.art[b2] or 1)
   end
 
-  -- ---- 洞穴（静止练习关没有轨道，也就没有洞穴）----
-  if ui.cave then
-    if sc.still or not sc.path then
-      setVisible(ui, ui.cave, false)
-      setVisible(ui, ui.caveRing, false)
-      setVisible(ui, ui.caveLabel, false)
-    else
-      local e = sc.path:pointAt(sc.path.length)
-      local R = mt.R * 1.5
-      placeBead(ui, ui.caveRing, cx, cy, e.x, e.y, R * 1.15, '#ff5a6e', 1)
-      placeBead(ui, ui.cave, cx, cy, e.x, e.y, R, '#1a0a12', 1)
-      place(ui, ui.caveLabel, cx, cy, e.x, e.y + R + 14 * (mt.scale or 1), 160, 28, 0)
+  -- ---- 开火后坐（stats.fired 涨了就弹一下）----
+  if ui.fancy ~= 0 and ui.rb then
+    local fired = (sc.stats and sc.stats.fired) or 0
+    if ui.lastFired == nil then ui.lastFired = fired end
+    if fired > ui.lastFired then
+      ui.fx[#ui.fx + 1] = { c = ui.rb, kind = 'fire', t = 0, dur = 0.16 }
     end
+    ui.lastFired = fired
   end
 
   -- ---- HUD 文本 ----
+  -- ★ 没文字的文本框要**连底板一起藏起来**：首轮美化里"结果"文本框一直是空的，
+  --   却把 640×120 的半透明黑板画在正中央，把核糖体整个盖住了。
   local function text(key, s)
     local c = ui.hud[key]
     if not c then return end
     if c.text ~= s then c.text = s; ui.stats.hudWrites = ui.stats.hudWrites + 1 end
+    if s and s ~= '' then
+      setVisible(ui, c, true)
+    else
+      setVisible(ui, c, false)
+    end
   end
   text('score', '分数 ' .. tostring(sc.score))
   text('lives', '命 ' .. tostring(sc.lives))
@@ -412,10 +684,12 @@ end
 
 -- ui 一共建了多少个控件（诊断行 + 预算自检用）
 function M.count(ui)
-  return #ui.balls + #ui.shots + #ui.links + #ui.elim + #ui.merges + #ui.loaded
-    + (ui.rb and 1 or 0) + (ui.aim and 1 or 0)
-    + (ui.cave and 1 or 0) + (ui.caveRing and 1 or 0) + (ui.caveLabel and 1 or 0)
+  local n = #ui.balls + #ui.shots + #ui.links + #ui.elim + #ui.merges
+    + #ui.track + #ui.halo + #ui.letter + #ui.loaded
+    + (ui.rb and 1 or 0) + (ui.aim and 1 or 0) + (ui.cd and 1 or 0)
+    + (ui.cave and 1 or 0) + (ui.caveLabel and 1 or 0) + #ui.caveGlow
     + #ui.hudOrder
+  return n
 end
 
 -- 平台上限自检（《编辑项范围限制》：单控件组 1000 / 单屏 10000）

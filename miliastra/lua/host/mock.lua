@@ -52,6 +52,9 @@ local Enum = {
                          'Faction', 'Currency', 'Prefab' }),
   ImageType = { Basic = 0, Stretch = 1 },
   ImageFillType = enumOf({ 'Unused', 'Horizontal', 'Vertical', 'Radial90', 'Radial180', 'Radial360' }),
+  -- 下面两个照官方《客户端控件 API 文档》§22/§23 补（原先漏了，于是"边缘羽化/径向填充"在本地没法用）
+  ImageFillRadialType = enumOf({ 'Bottom', 'Left', 'Top', 'Right' }),
+  ImageMaskSoftEdgeMode = enumOf({ 'Percentage', 'Pixel' }),
   ControllerNavigationDir = { Up = 0, Down = 1, Left = 2, Right = 3 },
   ControllerNavigationEventType = enumOf({ 'Confirm', 'Cancel', 'Focus', 'LostFocus' }),
   ScrollDirection = { Horizontal = 0, Vertical = 1 },

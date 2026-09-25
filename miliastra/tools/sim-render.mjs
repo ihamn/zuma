@@ -1,13 +1,15 @@
 // sim-render.mjs —— 把试玩台导出的控件树（sim-play.mjs --json=…）画成 PNG，好"看见"画面。
 //
 // 为什么值得有：我看不到真机屏幕，用户也未必每次都能截图；而"球到底在不在轨道上、
-// HUD 排得对不对、颜色有没有反色"这些事，一张图比一百行日志快。
+// HUD 排得对不对、颜色有没有反色、瞄准线朝哪"这些事，一张图比一百行日志快。
 //
-// 它画的是**沙箱里真实控件树**（位置/尺寸/颜色/文字都来自运行时），不是我们自己的模型 ——
-// 所以它同时是一次几何验收：球如果没落在轨道上，图上一眼就能看出来。
+// 它画的是**沙箱里真实控件树**（位置/尺寸/颜色/透明度/对齐/旋转/径向填充都来自运行时），
+// 不是我们自己的模型 —— 所以它同时是一次几何验收：球如果没落在轨道上，图上一眼就能看出来。
 //
-// ★ 它画不了：控件模板里的**图片素材**（球面的碱基字母是图片，不是文字）。
-//   所以球只画成一个圆，颜色是真的、字母要等真机。
+// ★ 它画不了：控件模板里的**图片素材**。球面的碱基字母现在是**文本框**（letters=1）所以看得见，
+//   但素材自带的图案（如果有）看不到。
+// ★ 模拟器不实现径向填充（studio 文档：径向 90/180/360 未实现），这里自己按 fillAmount 画成弧，
+//   好让"冷却环"在预览里也看得出进度。
 //
 // 用法：
 //   node miliastra/tools/sim-play.mjs --level=1 --json=miliastra/out/sim-L1.json
@@ -22,11 +24,10 @@ import { findPython, hasModule } from './lib/python.mjs';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 // 相对路径先按当前目录算（和 sim-play.mjs 的 --json 一致），再退回 miliastra/
-const pick = (arg, dflt, ext) => {
+const pick = (arg, dflt) => {
   const p = path.resolve(arg || dflt);
   if (fs.existsSync(p)) return p;
-  const q = path.resolve(ROOT, arg || dflt);
-  return fs.existsSync(q) || !arg ? q : p;
+  return path.resolve(ROOT, arg || dflt);
 };
 const jsonPath = pick(args[0], path.join('out', 'sim.json'));
 const pngPath = path.resolve(args[1] || jsonPath.replace(/\.json$/, '') + '.png');
@@ -39,17 +40,16 @@ if (!hasModule('PIL')) {
 }
 
 const py = String.raw`
-import json, sys, os
+import json, sys, os, math
 from PIL import Image, ImageDraw, ImageFont
 
 src, dst = sys.argv[1], sys.argv[2]
 data = json.load(open(src, encoding='utf-8'))
 W, H = data['canvas']['w'], data['canvas']['h']
-img = Image.new('RGB', (W, H), (16, 20, 24))
-d = ImageDraw.Draw(img)
+img = Image.new('RGBA', (W, H), (16, 20, 24, 255))
+d = ImageDraw.Draw(img, 'RGBA')
 
 def load_font(size, bold=False):
-    # 中文必须用系统里的 CJK 字体，Pillow 自带字体画不了汉字（会变成方框）
     for name in (('msyhbd.ttc' if bold else 'msyh.ttc'), 'msyh.ttc', 'simhei.ttf', 'simsun.ttc'):
         p = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', name)
         if os.path.exists(p):
@@ -57,64 +57,86 @@ def load_font(size, bold=False):
             except Exception: pass
     return ImageFont.load_default()
 
-# 与游戏里的 Z 层级大致对齐：先画"球"，再画文字
-images = [c for c in data['controls'] if c['kind'] == 'image' and c['visible'] and c['active'] and c['w'] > 1]
-texts  = [c for c in data['controls'] if c['kind'] == 'textbox' and c['visible'] and c['active'] and (c.get('text') or '')]
+def rgba(c, scale=1.0):
+    r, g, b, a = c
+    return (int(r), int(g), int(b), max(0, min(255, int(a * scale))))
 
-import math
+def ell(cx, cy, rx, ry, fill, outline=None, width=1):
+    d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=fill, outline=outline, width=width)
+
+def soft_ell(cx, cy, rx, ry, fill, soft):
+    """柔边近似：核心 + 几圈递减透明度（图片控件没有真渐变，靠这个看个大概）"""
+    if not soft:
+        ell(cx, cy, rx, ry, fill); return
+    steps = 5
+    for i in range(steps, 0, -1):
+        k = 1.0 + (soft / 100.0) * (i / steps)
+        ell(cx, cy, rx * k, ry * k, (fill[0], fill[1], fill[2], int(fill[3] * 0.16)))
+    ell(cx, cy, rx, ry, fill)
+
+images = [c for c in data['controls'] if c['kind'] == 'image' and c['visible'] and c['active'] and c['w'] > 0.5]
+texts  = [c for c in data['controls'] if c['kind'] == 'textbox' and c['visible'] and c['active'] and (c.get('text') or c.get('bgColor', [0,0,0,0])[3] > 0)]
 
 for c in images:
-    r, g, b, a = (c.get('color') or [255, 255, 255, 255])
-    x, y, w, h = c['x'], c['y'], c['w'], c['h']
-    rot = c.get('rot') or 0
+    col = rgba(c.get('color') or [255, 255, 255, 255])
+    x, y, w, h, rot, soft = c['x'], c['y'], c['w'], c['h'], c.get('rot') or 0, c.get('soft') or 0
+    fill = c.get('fill')
+    # 径向填充（冷却环）：画成弧，起点在正上方（Enum.ImageFillRadialType.Top）
+    if fill and fill['type'].startswith('Radial'):
+        amount = max(0.0, min(1.0, fill.get('amount', 1)))
+        r = max(w, h) / 2
+        lw = max(3, r * 0.18)
+        d.arc([x - r, y - r, x + r, y + r], -90, -90 + 360 * amount, fill=col, width=int(lw))
+        continue
     if rot:
-        # 有旋转 = 一根"棒"（瞄准线 / 配对连线）：按中心旋转画成多边形。
-        # ★ 符号：控件空间的 y 向上、图片的 y 向下，所以要取反。
+        # 有旋转 = 一根"棒"（瞄准线 / 连线 / 轨道路面）：按中心旋转画成多边形
+        # ★ 符号：控件空间的 y 向上、图片的 y 向下，所以要取反
         ang = math.radians(-rot)
         ca, sa = math.cos(ang), math.sin(ang)
         pts = []
         for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
             px, py = sx * w / 2, sy * h / 2
             pts.append((x + px * ca - py * sa, y + px * sa + py * ca))
-        d.polygon(pts, fill=(r, g, b))
-    elif (r, g, b) == (255, 255, 255):
-        # 白色 = 碱基丢了（模拟器 32 位整数的假象，见 sim-play.mjs 顶部）——
-        # 画成空心 + 问号，免得被当成"本来就该是白球"
-        d.ellipse([x - w/2, y - h/2, x + w/2, y + h/2], outline=(150, 150, 150), width=2)
+        d.polygon(pts, fill=col)
+        continue
+    if (col[0], col[1], col[2]) == (255, 255, 255) and col[3] == 255:
+        # 纯白 = 碱基丢了（模拟器 32 位整数的假象之一）—— 画成空心 + 问号
+        ell(x, y, w/2, h/2, None, outline=(150, 150, 150), width=2)
         fq = load_font(max(10, h * 0.6))
         qw = d.textlength('?', font=fq)
         d.text((x - qw/2, y - h * 0.42), '?', font=fq, fill=(150, 150, 150))
     else:
-        d.ellipse([x - w/2, y - h/2, x + w/2, y + h/2], fill=(r, g, b), outline=(0, 0, 0), width=1)
+        soft_ell(x, y, w/2, h/2, col, soft)
 
 for c in texts:
     size = c.get('fontSize') or 24
     f = load_font(size)
-    lines = c['text'].split('\n')
-    lh = size * 1.35
-    total = lh * len(lines)
     x, y, w, h = c['x'], c['y'], c['w'], c['h']
-    top = y - total / 2
+    bg = c.get('bgColor') or [0, 0, 0, 0]
+    if bg[3] > 0:
+        d.rectangle([x - w/2, y - h/2, x + w/2, y + h/2], fill=rgba(bg))
+    lines = (c.get('text') or '').split('\n')
+    lh = size * 1.35
+    top = y - lh * len(lines) / 2
     for i, line in enumerate(lines):
         lw = d.textlength(line, font=f)
         align = str(c.get('align') or 'Left')
-        if 'Right' in align:   lx = x + w/2 - lw
+        if 'Right' in align:    lx = x + w/2 - lw
         elif 'Middle' in align: lx = x - lw/2
-        else:                  lx = x - w/2
-        d.text((lx, top + i * lh), line, font=f, fill=(240, 240, 240))
+        else:                   lx = x - w/2
+        d.text((lx, top + i * lh), line, font=f, fill=rgba(c.get('fontColor') or [240, 240, 240, 255]))
 
 d.text((8, 6), os.path.basename(data.get('script', '?')) + '  第 %s 关  %s 帧%s' % (
     data.get('level'), data.get('frames'), '（带机器人点击）' if data.get('play') else ''), font=load_font(18), fill=(120, 200, 140))
 if data.get('intBits') == 32:
-    # 把"这是模拟器假象"直接写进图里，免得以后有人盯着白球查半天
-    d.text((8, H - 26), '⚠ 模拟器（Fengari）整数是 32 位 → rng 取到 nil：带 ? 的空心白球是假象，不是游戏 bug',
+    d.text((8, H - 26), '⚠ 模拟器（Fengari）整数是 32 位 → rng 会取到 nil：带 ? 的空心白球是假象，不是游戏 bug',
            font=load_font(20), fill=(230, 160, 90))
-img.save(dst)
+img.convert('RGB').save(dst)
 print(dst)
 `;
 
 const { cmd, prefix } = findPython();
 const out = execFileSync(cmd, [...prefix, '-c', py, jsonPath, pngPath], { encoding: 'utf8' }).trim();
-const n = JSON.parse(fs.readFileSync(jsonPath, 'utf8')).controls
-  .filter((c) => c.kind === 'image' && c.visible && c.active && c.w > 1).length;
-console.log('试玩截图：' + path.relative(process.cwd(), out) + '（' + n + ' 个球）');
+const all = JSON.parse(fs.readFileSync(jsonPath, 'utf8')).controls;
+const vis = all.filter((c) => c.kind === 'image' && c.visible && c.active && c.w > 0.5).length;
+console.log('试玩截图：' + path.relative(process.cwd(), out) + '（可见图片控件 ' + vis + ' 个 / 控件总数 ' + all.length + '）');
