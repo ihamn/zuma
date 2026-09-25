@@ -684,9 +684,12 @@ local function syncEgg(ui, sc, st)
     '欠款   ' .. string.format('%.0f', st2.debtCash or 0) .. ' 元     金欠   ' ..
       string.format('%.1f', st2.debtGold or 0) .. ' g',
     '利息   ' .. string.format('%.0f', st2.interestPaid or 0) .. ' 元（30 秒 +10%，复利）',
-    (st2.tWork and st2.tWork > 0)
+    -- ★★ 署名：原作者授权本项目移植的条件就是**注明来源**，这一行不能删（见 egg.lua 头部）。
+    --   ⚠ 必须**两个分支都带** —— 第一版只写在"不打工"那一支上，一进打工（30 秒）署名就消失了 ✗。
+    ((st2.tWork and st2.tWork > 0)
       and ('打工中… 剩 ' .. string.format('%.0f', st2.tWork) .. ' 秒')
-      or '（打工：仅欠款时可用，30 秒，还 20%）',
+      or '（打工：仅欠款时可用，30 秒，还 20%）')
+      .. '    感谢傻傻白老师对本项目的支持',
   }
   for i = 1, 5 do
     local c = e.lines[i]
