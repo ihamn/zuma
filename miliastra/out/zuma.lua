@@ -2519,14 +2519,23 @@ local function placeTrack(ui, sc)
     local m = #poly
     if m < 2 then return end
     local w = V.trackWidthK * radius
+    -- ★ 每段两端各伸出去半个宽度：相邻两段**互相压住**，接缝就看不出来了
+    --   （不伸的话，圆头"棒"接起来会露出一圈小缺口 —— 第一版出图时能看见一道道的暗痕）
+    local ext = w * 0.5
     for k = 0, N - 1 do
       local i0 = 1 + math.floor(k * (m - 1) / N)
       local i1 = 1 + math.floor((k + 1) * (m - 1) / N)
       if i1 > i0 then
-        seg = seg + 1
         local a, b = poly[i0], poly[i1]
-        placeSeg(ui, ui.track[seg], cx, cy, a.x, a.y, b.x, b.y, w, hex)
-        softEdge(ui.track[seg], ui.fancy ~= 0, 50)
+        local dx, dy = b.x - a.x, b.y - a.y
+        local len = math.sqrt(dx * dx + dy * dy)
+        if len > 1e-6 then
+          local ux, uy = dx / len, dy / len
+          seg = seg + 1
+          placeSeg(ui, ui.track[seg], cx, cy,
+            a.x - ux * ext, a.y - uy * ext, b.x + ux * ext, b.y + uy * ext, w, hex)
+          softEdge(ui.track[seg], ui.fancy ~= 0, 50)
+        end
       end
     end
   end
