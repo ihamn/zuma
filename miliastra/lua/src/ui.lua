@@ -563,7 +563,11 @@ local function placeTrack(ui, sc)
 
   if sc.railPolys then
     drawRail(sc.railPolys.spawn, (sc.rails.spawn and sc.rails.spawn.radius) or mt.R, C.roadOuter)
-    drawRail(sc.railPolys.eliminate, (sc.rails.eliminate and sc.rails.eliminate.radius) or mt.r, C.roadInner)
+    -- ★ 经典祖玛（§66）：**单轨** —— 经典关不画那条"三消道"（原版只有一条轨道）。
+    --   不画它也就没人会以为"球该往那条道上走"。
+    if sc.rules ~= 'classic' then
+      drawRail(sc.railPolys.eliminate, (sc.rails.eliminate and sc.rails.eliminate.radius) or mt.r, C.roadInner)
+    end
   end
   for i = seg + 1, #ui.track do setVisible(ui, ui.track[i], false) end
 end
@@ -879,6 +883,9 @@ function M.sync(ui, sc, st)
     --   探针只动 ③（k=2），④ 全程不动；`letterProbe=0` 可关掉。
     for k = 1, 2 do
       local lc = ui.loadedLetter and ui.loadedLetter[k]
+      -- ★ 经典祖玛（§66.6）：原版是**纯色球** —— 核糖体上那两颗（炮口/预备）也**不加字母**。
+      --   奇匠原话："经典模式下的核糖体就别在上面加字母了"。（链珠字母早在 §66 就关了。）
+      if sc.rules == 'classic' then lc = nil end
       if lc then
         local base = (k == 1) and b1 or b2
         local rr = (k == 1) and bR or bR * 0.8
@@ -949,8 +956,15 @@ function M.sync(ui, sc, st)
     local r = sc.runsInfo[i]
     runs[#runs + 1] = tostring(r.len) .. (r.len % 3 == 0 and '✓' or ('(+' .. tostring(3 - r.len % 3) .. ')'))
   end
-  text('runs', '连读 ' .. (#runs > 0 and table.concat(runs, ' ') or '—'))
-  text('mode', st.mode == 'insert' and '模式：加球' or '模式：配对')
+  -- ★ 经典祖玛（§66）：**没有"配对了几个"这回事** —— "连读 x(+y)"那套是 RNA 的 3n 读数，
+  --   在经典关显示出来就是一串没意义的 "1(+2) 2(+1)…"（出图时看到满屏都是）。所以经典关不显示。
+  if sc.rules == 'classic' then
+    text('runs', '')
+    text('mode', '')
+  else
+    text('runs', '连读 ' .. (#runs > 0 and table.concat(runs, ' ') or '—'))
+    text('mode', st.mode == 'insert' and '模式：加球' or '模式：配对')
+  end
   -- 判定诊断行（st.lastHit / st.mate 由 game.lua 填）：屏幕上直接看得到"这次算配对还是错配"
   if ui.hud.hit then text('hit', st.lastHit or '') end
   if ui.hud.mate then text('mate', st.mate or '') end
