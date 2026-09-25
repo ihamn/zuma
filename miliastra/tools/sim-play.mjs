@@ -113,6 +113,8 @@ function snapshot() {
       y: +p.y.toFixed(2),
       w: +(c.sizeDeltaX || 0).toFixed(2),
       h: +(c.sizeDeltaY || 0).toFixed(2),
+      rot: +(c.localRotationZ || 0).toFixed(3),   // 瞄准线/连线靠它摆方向（sim-render 会画出来）
+      pivot: +(c.pivotX ?? 0.5),                  // 旋转绕哪一点：0.5 = 绕中心
       text: c.kind === 'textbox' ? (c.text || '') : undefined,
       fontSize: c.kind === 'textbox' ? c.fontSize : undefined,
       align: c.kind === 'textbox' ? String(c.horizontalAlignment) : undefined,
@@ -153,7 +155,12 @@ const cursorArea = findCursorArea();
 for (let f = 0; f < frames; f++) {
   if (play && cursorArea && f % clickEvery === 0) {
     const t = pickTarget()
-    if (t) rt.injectCursor(cursorArea, 'CursorClick', { x: t.x, y: t.y, dragging: false, touchId: 1 })
+    // ★★ 坐标系别搞混（官方《客户端控件 API 文档》）：
+    //   GetCursorUIPos / CursorEventData:GetUIPos() 是「**以画布左下角为原点**、y 向上」，
+    //   而上面 absPos() 算的是「左上角为原点、y 向下」的屏幕坐标。
+    //   直接把屏幕坐标塞进去 = 上下镜像 → 瞄准会朝反方向（这个坑我自己踩过一次：
+    //   截图里瞄准线朝上，游戏其实没错，是机器人点错了地方）。
+    if (t) rt.injectCursor(cursorArea, 'CursorClick', { x: t.x, y: canvasH - t.y, dragging: false, touchId: 1 })
   }
   rt.step(1 / 30)
 }

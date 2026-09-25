@@ -168,6 +168,11 @@ function G.boot()
     ballCount = param('ballCount', 96),
     shotPrefab = param('shotPrefab', param('ballPrefab', 1)),
     shotCount = param('shotCount', 8),
+    -- 连线 / 洞穴都用**球的模板**（拉长就是一根棒、放大就是一个洞）—— 编辑器里不用多建模板
+    linkPrefab = param('linkPrefab', param('ballPrefab', 1)),
+    linkCount = param('linkCount', param('ballCount', 96) * 2),
+    cavePrefab = param('cavePrefab', param('ballPrefab', 1)),
+    mergeCount = param('mergeCount', 8),
     hudPrefab = param('hudPrefab', 2),
     hud = buildHudSpecs(w, h),
   })
@@ -215,8 +220,8 @@ function G.refreshDiag()
   else
     local balls = G.sc and #G.sc.chain.balls or 0
     local pool = G.ui and #G.ui.balls or 0
-    local ctrl = 0
-    if G.ui then ctrl = pool + #G.ui.shots + 7 end
+    -- 控件总数 = ui 建的 + 脚本自己建的 3 个（诊断框 / 玩区 / 光标区）
+    local ctrl = G.ui and (UI.count(G.ui) + 3) or 0
     s = string.format('帧%d 关%s 球%d/%d 控件%d 状态%s', G.frames,
       tostring(G.level and G.level.id or '?'), balls, pool, ctrl, G.screen)
   end

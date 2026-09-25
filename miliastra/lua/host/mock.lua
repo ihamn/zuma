@@ -158,8 +158,11 @@ local function newControl(kind, prefabIndex, name)
     navListeners = {},
   }
   c.anchoredPositionX, c.anchoredPositionY = 0, 0
-  c.anchorMinX, c.anchorMinY, c.anchorMaxX, c.anchorMaxY = 0, 0, 0, 0
-  c.pivotX, c.pivotY = 0, 0
+  -- ★ 锚点/pivot 默认 0.5（= 相对父级中心）：真机运行时就是这个默认值
+  --   （scene.js 的 Control：anchorMin/Max 0.5、pivot 0.5）。ui.lua 靠"绕中心旋转"画
+  --   瞄准线和连线，pivot 不对的话真机上那两根会绕着角转 —— 这里照真机给对。
+  c.anchorMinX, c.anchorMinY, c.anchorMaxX, c.anchorMaxY = 0.5, 0.5, 0.5, 0.5
+  c.pivotX, c.pivotY = 0.5, 0.5
   c.localScaleX, c.localScaleY, c.localScaleZ = 1, 1, 1
   c.localRotationX, c.localRotationY, c.localRotationZ = 0, 0, 0
   c.sizeDeltaX, c.sizeDeltaY = 100, 100

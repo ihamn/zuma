@@ -89,7 +89,31 @@ Lua 脚本（挂在容器上）
 | 打字/分数 | `ClientUITextBoxControl.text` **读写** |
 | 瞄准开火 | `game.GetCursorUIPos()` + `CursorEventArea` + 键盘枚举 |
 | 消除动画 | `game.Tween` / `TweenSequence`（30 种缓动） |
-| 容量 | 我们只用 45 个控件（上限 1000/组、10000/屏） |
+| 容量 | 默认 `ballCount=96` 时**413 个控件**（≈ 4.3 × ballCount），上限 1000/组、10000/屏 |
+
+## 表现层画了什么（对着 `src/render.js` 搬的）
+
+`lua/src/ui.lua` 只管"把 sc 里的状态写成控件"，几何/百分比全部照网页版原式：
+
+| 画面上看到的东西 | 对应本体函数 | 实现 |
+|---|---|---|
+| 珠子串 | `drawBeadLayer` | 球池（图片控件，位置/尺寸/颜色/图片） |
+| **核糖体（发射口）** | `drawRibosome` | 1 个暗色圆 + 2 颗待发球（炮口那颗在 +0.8R、待命那颗在 −0.7R，尺寸随模式变） |
+| **瞄准线** | `drawRibosome` 开头 | 一根拉长的图片控件，长度 `R + 110×scale`，角度 = `-deg(aim)` |
+| **配对连线** | `drawPairLink(s)` | 26%→74% 一根直棒；**错配画成两段折线**（"断掉的键"，DESIGN §32） |
+| **绑定小球**（读出的那一半） | `drawBeadLayer` 的 `beads.eliminate` | 副轨上的一颗小球，颜色 = 绑定碱基色 |
+| 并入过程中的球 | `drawMergeLayer` | 加球模式下正在挤进去的那颗 |
+| **洞穴（降解口）** | `drawCave` | 红圈 + 暗心（本体是渐变+描边，图片控件没有描边）+ 文本框「降解洞穴」 |
+| 轨道 | `drawTrackLayer` | **不由 Lua 画**：编辑期摆静态图片，形状见 `out/path-<id>.svg`（`docs/05` §L109） |
+| HUD | `drawRunBadges` 等 | 6 个文本框 |
+
+⚠ 图片控件**只有填充色**，没有描边/渐变/alpha —— 核糖体、洞穴、瞄准线都是"能看出是什么"的近似，
+真机上看效果再调数值。这些取舍写在 `ui.lua` 顶部注释里。
+
+★ 坐标约定（踩过）：官方 `game.GetCursorUIPos()` / `CursorEventData:GetUIPos()` 是
+**以画布左下角为原点、y 向上**，而 board 用"左上角原点、y 向下" —— `input.lua` 的 `toBoard()`
+就是干这个换算的。本地试玩台的机器人一开始把屏幕坐标直接塞进去，瞄准就上下镜像了
+（**游戏没错，是工具有错**；`sim-play.mjs` 里有注释）。
 
 ## 已经验证到什么程度（**本工作区最有价值的一栏**）
 
@@ -100,10 +124,11 @@ Lua 脚本（挂在容器上）
 | 与本体一致 | ✅ **零差异** | 12 局完整对局逐帧逐球，81339 个数值 |
 | 关卡数据 | ✅ | 11 关从 `levels.js` 导出 + 自检 |
 | 表现层 / 输入层 / 生命周期 | ✅ | `ui.lua` / `input.lua` / `game.lua` |
-| **真机运行时契约** | ✅ | 4 条硬限制写进代码 + 假宿主强制 + 8 项契约断言（见下节） |
-| 本地能跑一整关 | ✅ | 假宿主 **164 项断言**（含打包产物端到端） |
-| 在客户端 Lua 运行时里真跑 | ✅ | 试玩台：114 个控件建出来、整关推进、可出图 |
-| 打包产物可直接上传 | ✅ ~91 KB，14 模块 | `out/zuma.lua`（92,899 字节） |
+| **表现层画全了**（核糖体/待发球/瞄准线/配对连线/绑定小球/并入球/洞穴） | ✅ | 40 项断言 + 试玩截图（`out/sim-*.png`） |
+| **真机运行时契约** | ✅ | 5 条硬限制写进代码 + 假宿主强制 + 契约断言（见下节） |
+| 本地能跑一整关 | ✅ | 假宿主 **211 项断言**（含打包产物端到端） |
+| 在客户端 Lua 运行时里真跑 | ✅ | 试玩台：417 个控件建出来、整关推进、可出图 |
+| 打包产物可直接上传 | ✅ ~100 KB，14 模块 | `out/zuma.lua`（102,689 字节） |
 | **编辑器里跑起来** | ❌ **没做过** | 见 `docs/05` §10 M2 |
 
 **换句话说：代码侧已经写完并本地验证；剩下的是编辑器里的手工搭建 + 真机实测。**
@@ -111,25 +136,28 @@ Lua 脚本（挂在容器上）
 移植过程中还**发现本体两处问题**（`baseRepeat` 悬空引用、`startWpFrac` 留下 28 秒空档），
 本轮**没有改动 `src/`**，记录在 `docs/05` §11。
 
-## 真机运行时契约（4 条硬限制，写进代码、也有断言守着）
+## 真机运行时契约（5 条硬限制，写进代码、也有断言守着）
 
 这些是"看着对、真机第一帧就崩"的那一类。来源：`miliastra-beyond-simulator` 的真机探针结论
 （`client/lua-runtime/docs/observed-contract.md`）+ 官方《客户端控件 API 文档》。
 
 | # | 真机行为 | 原来错在哪 | 现在 |
 |---|---|---|---|
-| 1 | 控件 ID 字段是 **`Id`**（首字母大写）；小写 `id` 读出来是 nil | `ui.last[c.id]` → 真机 `table index is nil`，**第一帧就崩** | `ui.ctrlId()` 认 `Id`；假宿主的 `id` 已删掉 |
+| 1 | 控件 ID 字段是 **`Id`**（首字母大写）；小写 `id` 读出来是 nil（官方文档写的是小写 `id`，**以真机探针为准**） | `ui.last[c.id]` → 真机 `table index is nil`，**第一帧就崩** | `ui.ctrlId()` 认 `Id`；假宿主的 `id` 已删掉 |
 | 2 | `visible` / `active` / `alive` / `prefabIndex` 是**只读**字段，写报 `cannot set X, no such field` | `setField(c,'visible',…)` 直接赋值 | 改可见性一律走 `c:SetVisible()` |
 | 3 | `InstantiateClientUIControl` 在 **OnInit 阶段返回 nil**，`OnStart` 才建得出来 | 原来在 OnInit 里建控件 → 一个都建不出来，连"报错的那行字"本身也是控件 → **白屏且无提示** | `OnInit` 只登记 + `EnableUpdate`；建控件全在 `OnStart`（`G.tryBoot`），`OnUpdate` 里还有兜底 |
 | 4 | **`EnableUpdate` 前没有 `OnUpdate`** | 不打开就永远是死画面 | `OnInit` 里 `script:EnableUpdate(true)`，日志会记下成功与否 |
+| 5 | `game` 的函数是**点号调用**（`game.GetUICanvasSize()`） | 写冒号会被真机报 `bad argument count … (0 expected, got 1)` | 假宿主对冒号调用直接报错 |
 
-外加一条：`game` 的函数是**点号调用**（`game.GetUICanvasSize()`），写冒号会被当真机报
-`bad argument count … (0 expected, got 1)`。
+★ 还有一条**坐标系**约定（不是契约，是很容易搞混）：官方光标 API
+（`game.GetCursorUIPos()` / `CursorEventData:GetUIPos()`）**以画布左下角为原点、y 向上**；
+board 用"左上角原点、y 向下"，换算在 `input.lua` 的 `toBoard()`。
 
 **为什么这些现在跑不掉**：假宿主 `lua/host/mock.lua` 已经按真机契约封死 ——
 字段白名单（不在表里读 nil、写报错）、`Id` 大小写、只读字段、生命周期阶段、
-`EnableUpdate` 开关、点号调用，全部照做。`test_mock.lua` / `test_diag.lua` / `test_bundle.lua`
-里有 8 项契约断言。**这些断言存在的唯一理由，就是当初 `c.id` 这种错在本地一路绿灯、到真机才炸。**
+`EnableUpdate` 开关、点号调用、锚点/pivot 默认 0.5，全部照做。
+契约断言在 `test_mock.lua` / `test_diag.lua` / `test_bundle.lua` 里。
+**这些断言存在的唯一理由，就是当初 `c.id` 这种错在本地一路绿灯、到真机才炸。**
 
 ## 本地试玩台（sim-play / sim-render）
 
@@ -173,8 +201,9 @@ node miliastra/tools/sim-render.mjs miliastra/out/sim-L1.json miliastra/out/sim-
 - [x] 考证（`docs/01``02``03``04`）—— 主路线据此改定为 Lua
 - [x] 数学内核 + 规则层移植，对拍零差异（81339 个数值 / 12 局对局）
 - [x] 关卡数据导出 + 自检
-- [x] 表现层 / 输入层 / 宿主胶水 + 假宿主 + **164 项 Lua 断言**
-- [x] 真机运行时契约 4 条（`Id` / 只读字段 / OnStart 才能建控件 / EnableUpdate）+ 契约断言
+- [x] 表现层 / 输入层 / 宿主胶水 + 假宿主 + **211 项 Lua 断言**
+- [x] 表现层画全（核糖体 / 待发球 / 瞄准线 / 配对连线 / 绑定小球 / 并入球 / 洞穴）
+- [x] 真机运行时契约 5 条（`Id` / 只读字段 / OnStart 才能建控件 / EnableUpdate / 点号调用）
 - [x] 本地试玩台：在客户端 Lua 运行时里真跑 + 出图
 - [x] 单文件打包 + **打包产物端到端**跑通一整关
 - [x] 移植方案定稿（`docs/05`）

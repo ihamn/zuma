@@ -36,7 +36,22 @@ function M.makeRng(seed)
   end
 
   local rng = setmetatable({}, { __call = function(_, ...) return step() end })
-  rng.int = function(n) return math.floor(step() * n) end
+  -- ★★ 取下标前**必须夹一次**：Lua 的整数位宽不是我们能控制的。
+  --    64 位（真机 Lua 5.3）= 上面的掩码有效，step() 恒在 [0,1)，下面的折叠**是恒等变换**，
+  --    一个数都不会变 —— 对拍 81339 个数值就是这条的证据。
+  --    但换成 32 位整数的环境（例如跑在 Fengari 上的模拟器，0xFFFFFFFF == -1），
+  --    step() 会跑到 [-0.5, 0.5)，math.floor(step()*n) 就成了负数或越界，
+  --    arr[idx+1] 直接是 nil —— 然后 nil 会一路传下去（碱基 nil → 球画成白色、
+  --    isComplement(nil) 之类更难查的错），而不是"当场报错"。
+  --    与其让环境差异变成 nil，不如折回 [0,1)：环境坏了也就是颜色序列不对，不至于崩。
+  local function unit()
+    local v = step()
+    if v ~= v then return 0 end          -- nan
+    v = v % 1                            -- [0,1) 之外的（负数 / ≥1）折回来
+    if v < 0 then v = v + 1 end          -- 兜底：万一 % 给了 -0.0
+    return v
+  end
+  rng.int = function(n) return math.floor(unit() * n) end
   rng.pick = function(arr) return arr[rng.int(#arr) + 1] end   -- Lua 数组从 1 开始
   rng.seed = seed & U32                                        -- 与 JS 一致：记的是**入参** seed
   return rng

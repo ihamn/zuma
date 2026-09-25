@@ -61,19 +61,31 @@ def load_font(size, bold=False):
 images = [c for c in data['controls'] if c['kind'] == 'image' and c['visible'] and c['active'] and c['w'] > 1]
 texts  = [c for c in data['controls'] if c['kind'] == 'textbox' and c['visible'] and c['active'] and (c.get('text') or '')]
 
+import math
+
 for c in images:
     r, g, b, a = (c.get('color') or [255, 255, 255, 255])
     x, y, w, h = c['x'], c['y'], c['w'], c['h']
-    box = [x - w/2, y - h/2, x + w/2, y + h/2]
-    if (r, g, b) == (255, 255, 255):
+    rot = c.get('rot') or 0
+    if rot:
+        # 有旋转 = 一根"棒"（瞄准线 / 配对连线）：按中心旋转画成多边形。
+        # ★ 符号：控件空间的 y 向上、图片的 y 向下，所以要取反。
+        ang = math.radians(-rot)
+        ca, sa = math.cos(ang), math.sin(ang)
+        pts = []
+        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            px, py = sx * w / 2, sy * h / 2
+            pts.append((x + px * ca - py * sa, y + px * sa + py * ca))
+        d.polygon(pts, fill=(r, g, b))
+    elif (r, g, b) == (255, 255, 255):
         # 白色 = 碱基丢了（模拟器 32 位整数的假象，见 sim-play.mjs 顶部）——
         # 画成空心 + 问号，免得被当成"本来就该是白球"
-        d.ellipse(box, outline=(150, 150, 150), width=2)
+        d.ellipse([x - w/2, y - h/2, x + w/2, y + h/2], outline=(150, 150, 150), width=2)
         fq = load_font(max(10, h * 0.6))
         qw = d.textlength('?', font=fq)
         d.text((x - qw/2, y - h * 0.42), '?', font=fq, fill=(150, 150, 150))
     else:
-        d.ellipse(box, fill=(r, g, b), outline=(0, 0, 0), width=1)
+        d.ellipse([x - w/2, y - h/2, x + w/2, y + h/2], fill=(r, g, b), outline=(0, 0, 0), width=1)
 
 for c in texts:
     size = c.get('fontSize') or 24
